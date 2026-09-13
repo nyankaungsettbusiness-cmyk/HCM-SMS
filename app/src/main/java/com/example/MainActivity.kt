@@ -41,8 +41,11 @@ import com.example.data.repository.TeacherRepository
 import com.example.data.sync.SyncManager
 
 import com.example.ui.components.AppNavigationDrawerContent
+import com.example.ui.components.AppUpdateDialog
 import com.example.ui.components.HcmTopAppBar
 import com.example.ui.components.ScreenRoute
+import com.example.data.util.AppUpdateManager
+import com.example.data.util.AppUpdateInfo
 import com.example.ui.screens.*
 import com.example.ui.screens.academicyear.AcademicYearPromotionScreen
 import com.example.ui.screens.ai.AiAssistantScreen
@@ -250,6 +253,9 @@ fun HcmMainApp(
     val selectedClassFilter by studentViewModel.selectedClassFilter.collectAsState()
     val selectedStatusFilter by studentViewModel.selectedStatusFilter.collectAsState()
 
+    // In-App GitHub Auto-Update State
+    var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -289,6 +295,14 @@ fun HcmMainApp(
         authViewModel.cleanUpMockAccounts()
         authViewModel.restoreSession(context)
         authViewModel.syncCloudUsers()
+
+        // Check for updates asynchronously without blocking or consuming DB quota
+        try {
+            val updateResult = AppUpdateManager.checkForUpdates()
+            if (updateResult.hasUpdate) {
+                updateInfo = updateResult
+            }
+        } catch (_: Exception) {}
     }
 
     // Require credentials login screen on launch
@@ -494,6 +508,16 @@ fun HcmMainApp(
                 }
             }
         }
+    }
+
+    // Force Update Dialog Overlay (Applies to both login and logged-in states)
+    updateInfo?.let { info ->
+        AppUpdateDialog(
+            updateInfo = info,
+            onDismiss = {
+                updateInfo = null
+            }
+        )
     }
 }
 

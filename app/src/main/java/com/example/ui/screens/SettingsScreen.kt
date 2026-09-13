@@ -46,6 +46,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -727,6 +728,11 @@ fun GeneralSettingsSection(
     var dateFormat by remember(schoolSettings) { mutableStateOf(schoolSettings.dateFormat) }
     var timeFormat by remember(schoolSettings) { mutableStateOf(schoolSettings.timeFormat) }
     var currency by remember(schoolSettings) { mutableStateOf(schoolSettings.currency) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var updateInfoState by remember { mutableStateOf<com.example.data.util.AppUpdateInfo?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val languages = listOf("English", "Myanmar (Burmese)", "Mon", "Karen", "Chinese")
     val dateFormats = listOf("yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy")
@@ -765,6 +771,83 @@ fun GeneralSettingsSection(
                             }
                         }
                         Switch(checked = isDarkTheme, onCheckedChange = onToggleDarkTheme)
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Application Updates", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text("Current Version: v${com.example.BuildConfig.VERSION_NAME} (Build ${com.example.BuildConfig.VERSION_CODE})", fontSize = 11.5.sp, color = Color.Gray)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        ) {
+                            Text(
+                                text = "GitHub Releases",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "When changes are pushed to GitHub, GitHub Actions automatically compiles and publishes the new APK. Tap below to check for available updates.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isCheckingUpdate = true
+                                    val info = com.example.data.util.AppUpdateManager.checkForUpdates()
+                                    isCheckingUpdate = false
+                                    updateInfoState = info
+                                    if (info.hasUpdate) {
+                                        showUpdateDialog = true
+                                    } else {
+                                        Toast.makeText(context, "You are using the latest version (v${com.example.BuildConfig.VERSION_NAME})", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            enabled = !isCheckingUpdate,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            if (isCheckingUpdate) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Checking...", fontSize = 12.sp)
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Check For Updates", fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }
@@ -868,6 +951,13 @@ fun GeneralSettingsSection(
                 }
             }
         }
+    }
+
+    if (showUpdateDialog && updateInfoState != null) {
+        com.example.ui.components.AppUpdateDialog(
+            updateInfo = updateInfoState!!,
+            onDismiss = { showUpdateDialog = false }
+        )
     }
 }
 
