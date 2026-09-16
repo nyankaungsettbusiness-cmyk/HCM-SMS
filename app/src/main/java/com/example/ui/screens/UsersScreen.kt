@@ -113,8 +113,8 @@ fun UsersScreen(
     val activeCount = allUsers.count { it.status == UserStatus.ACTIVE }
     val inactiveCount = allUsers.count { it.status == UserStatus.INACTIVE || it.status == UserStatus.SUSPENDED }
     val lockedCount = allUsers.count { it.status == UserStatus.LOCKED }
-    val syncedCount = allUsers.count { !it.isDirty && it.uuid.isNotBlank() }
-    val pendingCount = allUsers.count { it.isDirty || it.uuid.isBlank() }
+    val syncedCount = allUsers.count { !it.isDirty }
+    val pendingCount = allUsers.count { it.isDirty }
     val syncStatus by authViewModel.syncStatus.collectAsState()
     val isSyncingUsers by authViewModel.isSyncingUsers.collectAsState()
 
@@ -231,6 +231,23 @@ fun UsersScreen(
                     }
                 }
 
+                if (pendingCount > 0) {
+                    IconButton(
+                        onClick = {
+                            authViewModel.clearPendingSyncFlags(context)
+                            Toast.makeText(context, "Pending flags reset to Synced", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.DoneAll,
+                            contentDescription = "Mark all as synced",
+                            tint = Color(0xFF2E7D32),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
                 // Add / Create Account Primary Action Button
                 Button(
                     onClick = { showCreateUserDialog = true },
@@ -316,7 +333,11 @@ fun UsersScreen(
             totalCount = totalUsersCount,
             activeCount = activeCount,
             syncedCount = syncedCount,
-            pendingCount = pendingCount
+            pendingCount = pendingCount,
+            onClearPending = {
+                authViewModel.clearPendingSyncFlags(context)
+                Toast.makeText(context, "Pending sync status cleared", Toast.LENGTH_SHORT).show()
+            }
         )
 
         // 3. Compact Module Tabs
@@ -587,7 +608,8 @@ private fun CompactUserStatsHeader(
     totalCount: Int,
     activeCount: Int,
     syncedCount: Int,
-    pendingCount: Int
+    pendingCount: Int,
+    onClearPending: () -> Unit = {}
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -606,14 +628,29 @@ private fun CompactUserStatsHeader(
             VerticalDivider(modifier = Modifier.height(20.dp))
             CompactStatPill(label = "Cloud Synced", value = syncedCount.toString(), color = Color(0xFF1565C0))
             VerticalDivider(modifier = Modifier.height(20.dp))
-            CompactStatPill(label = "Pending Sync", value = pendingCount.toString(), color = if (pendingCount > 0) Color(0xFFE65100) else Color(0xFF757575))
+            CompactStatPill(
+                label = "Pending Sync",
+                value = pendingCount.toString(),
+                color = if (pendingCount > 0) Color(0xFFE65100) else Color(0xFF757575),
+                modifier = if (pendingCount > 0) {
+                    Modifier.clickable {
+                        onClearPending()
+                    }
+                } else Modifier
+            )
         }
     }
 }
 
 @Composable
-private fun CompactStatPill(label: String, value: String, color: Color) {
+private fun CompactStatPill(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
     Row(
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {

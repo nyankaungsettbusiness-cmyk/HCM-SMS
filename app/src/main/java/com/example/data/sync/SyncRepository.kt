@@ -54,6 +54,10 @@ class SyncRepository(
         private val localToRemoteAssessmentIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
         private val remoteToLocalStudentIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
         private val remoteToLocalAssessmentIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+        private val localToRemoteGradeIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+        private val remoteToLocalGradeIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+        private val localToRemoteSubjectIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+        private val remoteToLocalSubjectIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
     }
 
     /**
@@ -104,6 +108,45 @@ class SyncRepository(
             Log.w(TAG, "Error counting dirty records: ${e.message}")
         }
         return dirtyCount
+    }
+
+    /**
+     * Clear all dirty flags locally across all Room database tables and empty the sync outbox.
+     * Guarantees pending changes count resets to 0 immediately.
+     */
+    suspend fun clearAllDirtyFlags(db: AppDatabase) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val writableDb = db.openHelper.writableDatabase
+                writableDb.execSQL("UPDATE school_settings SET isDirty = 0;")
+                writableDb.execSQL("UPDATE subjects SET isDirty = 0;")
+                writableDb.execSQL("UPDATE grades SET isDirty = 0;")
+                writableDb.execSQL("UPDATE school_classes SET isDirty = 0;")
+                writableDb.execSQL("UPDATE students SET isDirty = 0;")
+                writableDb.execSQL("UPDATE teachers SET isDirty = 0;")
+                writableDb.execSQL("UPDATE users SET isDirty = 0;")
+                writableDb.execSQL("UPDATE academic_years SET isDirty = 0;")
+                writableDb.execSQL("UPDATE assessments SET isDirty = 0;")
+                writableDb.execSQL("UPDATE student_marks SET isDirty = 0;")
+                writableDb.execSQL("UPDATE assessment_results SET isDirty = 0;")
+                writableDb.execSQL("UPDATE attendance_records SET isDirty = 0;")
+                writableDb.execSQL("UPDATE custom_exams SET isDirty = 0;")
+                writableDb.execSQL("UPDATE grading_policies SET isDirty = 0;")
+                try {
+                    writableDb.execSQL("UPDATE holistic_categories SET isDirty = 0;")
+                    writableDb.execSQL("UPDATE holistic_results SET isDirty = 0;")
+                    writableDb.execSQL("UPDATE teacher_comments SET isDirty = 0;")
+                    writableDb.execSQL("UPDATE sgi_categories SET isDirty = 0;")
+                    writableDb.execSQL("UPDATE sgi_results SET isDirty = 0;")
+                } catch (_: Exception) {}
+                try {
+                    writableDb.execSQL("DELETE FROM sync_outbox;")
+                } catch (_: Exception) {}
+                Log.i(TAG, "All dirty flags and sync outbox cleared successfully.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error clearing all dirty flags: ${e.message}", e)
+            }
+        }
     }
 
     /**
@@ -1046,18 +1089,29 @@ class SyncRepository(
             emptyList()
         }
         val remoteByUuid = remoteList.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
-        val remoteByName = remoteList.filter { it.gradeName.isNotBlank() }.associateBy { it.gradeName }
+        val remoteByName = remoteList.filter { it.gradeName.isNotBlank() }.associateBy { it.gradeName.trim().lowercase() }
 
-        val unsynced = dao.getGradesForSync()
+        val allLocalGrades = dao.getAllGradesSync()
+        for (local in allLocalGrades) {
+            val remote = (if (local.uuid.isNotBlank()) remoteByUuid[local.uuid] else null)
+                ?: remoteByName[local.gradeName.trim().lowercase()]
+            if (remote?.id != null) {
+                localToRemoteGradeIdCache[local.id] = remote.id
+                remoteToLocalGradeIdCache[remote.id] = local.id
+            }
+        }
+
+        val unsynced = if (remoteList.isEmpty()) allLocalGrades else dao.getGradesForSync()
         for (item in unsynced) {
             try {
                 val assignedUuid = item.uuid.ifBlank { UUID.randomUUID().toString() }
                 val updated = if (item.uuid.isBlank()) item.copy(uuid = assignedUuid) else item
-                val existingRemote = remoteByUuid[assignedUuid] ?: remoteByName[updated.gradeName]
+                val existingRemote = remoteByUuid[assignedUuid] ?: remoteByName[updated.gradeName.trim().lowercase()]
 
                 val targetUuid = existingRemote?.uuid?.takeIf { it.isNotBlank() } ?: assignedUuid
+                val targetId = existingRemote?.id ?: if (item.id > 0) item.id else null
                 val dto = GradeSupabaseDto.fromEntity(updated).copy(
-                    id = existingRemote?.id,
+                    id = targetId,
                     uuid = targetUuid
                 )
                 try {
@@ -1090,10 +1144,18 @@ class SyncRepository(
                         dao.insertGrade(remoteEntity)
                         pulled++
                     }
+                    if (remoteDto.id != null) {
+                        localToRemoteGradeIdCache[existingLocal.id] = remoteDto.id
+                        remoteToLocalGradeIdCache[remoteDto.id] = existingLocal.id
+                    }
                 } else {
                     val newEntity = remoteDto.toEntity()
-                    dao.insertGrade(newEntity)
+                    val newId = dao.insertGrade(newEntity)
                     pulled++
+                    if (remoteDto.id != null && newId > 0) {
+                        localToRemoteGradeIdCache[newId] = remoteDto.id
+                        remoteToLocalGradeIdCache[remoteDto.id] = newId
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -1119,12 +1181,14 @@ class SyncRepository(
             try {
                 val assignedUuid = item.uuid.ifBlank { UUID.randomUUID().toString() }
                 val updated = if (item.uuid.isBlank()) item.copy(uuid = assignedUuid) else item
-                val existingRemote = remoteByUuid[assignedUuid] ?: remoteByName["${updated.gradeId}_${updated.className}"]
+                val remoteGradeId = localToRemoteGradeIdCache[updated.gradeId] ?: updated.gradeId
+                val existingRemote = remoteByUuid[assignedUuid] ?: remoteByName["${remoteGradeId}_${updated.className}"]
 
                 val targetUuid = existingRemote?.uuid?.takeIf { it.isNotBlank() } ?: assignedUuid
                 val dto = SchoolClassSupabaseDto.fromEntity(updated).copy(
                     id = existingRemote?.id,
-                    uuid = targetUuid
+                    uuid = targetUuid,
+                    gradeId = remoteGradeId
                 )
                 try {
                     client.from("school_classes").upsert(dto, onConflict = "uuid")
@@ -1146,14 +1210,15 @@ class SyncRepository(
         try {
             for (remoteDto in remoteList) {
                 val existingLocal = if (remoteDto.uuid.isNotBlank()) dao.getClassByUuid(remoteDto.uuid) else null
+                val resolvedGradeId = remoteToLocalGradeIdCache[remoteDto.gradeId] ?: remoteDto.gradeId
                 if (existingLocal != null) {
-                    val remoteEntity = remoteDto.toEntity(existingLocalId = existingLocal.id)
+                    val remoteEntity = remoteDto.toEntity(existingLocalId = existingLocal.id, resolvedGradeId = resolvedGradeId)
                     if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
                         dao.insertClass(remoteEntity)
                         pulled++
                     }
                 } else {
-                    val newEntity = remoteDto.toEntity()
+                    val newEntity = remoteDto.toEntity(resolvedGradeId = resolvedGradeId)
                     dao.insertClass(newEntity)
                     pulled++
                 }
@@ -1177,18 +1242,32 @@ class SyncRepository(
         val remoteByLevelAndName = remoteList.filter { it.name.isNotBlank() }.associateBy { 
             "${it.educationLevel.trim().uppercase()}_${it.name.trim().lowercase()}_${it.category.trim().uppercase()}_${it.subTrack.trim().lowercase()}"
         }
+        val remoteByNameOnly = remoteList.filter { it.name.isNotBlank() }.associateBy { it.name.trim().lowercase() }
 
-        val unsynced = dao.getSubjectsForSync()
+        val allLocalSubjects = dao.getAllSubjectsSync()
+        for (local in allLocalSubjects) {
+            val compositeKey = "${local.educationLevel.name}_${local.name.trim().lowercase()}_${local.category.name}_${local.subTrack.trim().lowercase()}"
+            val remote = (if (local.uuid.isNotBlank()) remoteByUuid[local.uuid] else null)
+                ?: remoteByLevelAndName[compositeKey]
+                ?: remoteByNameOnly[local.name.trim().lowercase()]
+            if (remote?.id != null) {
+                localToRemoteSubjectIdCache[local.id] = remote.id
+                remoteToLocalSubjectIdCache[remote.id] = local.id
+            }
+        }
+
+        val unsynced = if (remoteList.isEmpty()) allLocalSubjects else dao.getSubjectsForSync()
         for (item in unsynced) {
             try {
                 val assignedUuid = item.uuid.ifBlank { UUID.randomUUID().toString() }
                 val updated = if (item.uuid.isBlank()) item.copy(uuid = assignedUuid) else item
                 val compositeKey = "${item.educationLevel.name}_${item.name.trim().lowercase()}_${item.category.name}_${item.subTrack.trim().lowercase()}"
-                val existingRemote = remoteByUuid[assignedUuid] ?: remoteByLevelAndName[compositeKey]
+                val existingRemote = remoteByUuid[assignedUuid] ?: remoteByLevelAndName[compositeKey] ?: remoteByNameOnly[item.name.trim().lowercase()]
 
                 val targetUuid = existingRemote?.uuid?.takeIf { it.isNotBlank() } ?: assignedUuid
+                val targetId = existingRemote?.id ?: if (item.id > 0) item.id else null
                 val dto = SubjectSupabaseDto.fromEntity(updated).copy(
-                    id = existingRemote?.id,
+                    id = targetId,
                     uuid = targetUuid
                 )
                 try {
@@ -1198,7 +1277,7 @@ class SyncRepository(
                     if (msg.contains("schema cache") || msg.contains("column") || msg.contains("Could not find")) {
                         // Remote table does not have newer columns (e.g. category, education_level); fallback to minimal DTO
                         val minimalDto = SubjectMinimalSupabaseDto(
-                            id = existingRemote?.id,
+                            id = targetId,
                             uuid = targetUuid,
                             name = updated.name,
                             updatedAt = millisToIso(updated.updatedAt),
@@ -1269,10 +1348,18 @@ class SyncRepository(
                         dao.updateSubject(remoteEntity)
                         pulled++
                     }
+                    if (remoteDto.id != null) {
+                        localToRemoteSubjectIdCache[existingLocal.id] = remoteDto.id
+                        remoteToLocalSubjectIdCache[remoteDto.id] = existingLocal.id
+                    }
                 } else if (!remoteDto.isDeleted) {
                     val newEntity = remoteDto.toEntity()
-                    dao.insertSubject(newEntity)
+                    val newId = dao.insertSubject(newEntity)
                     pulled++
+                    if (remoteDto.id != null && newId > 0) {
+                        localToRemoteSubjectIdCache[newId] = remoteDto.id
+                        remoteToLocalSubjectIdCache[remoteDto.id] = newId
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -1284,12 +1371,77 @@ class SyncRepository(
     private suspend fun syncGradeSubjectCrossRefsInternal(client: SupabaseClient): Pair<Int, Int> {
         val dao = schoolPolicyDao ?: return Pair(0, 0)
         var pushed = 0; var pulled = 0
+
+        val remoteGrades = try {
+            client.from("grades").select().decodeList<GradeSupabaseDto>()
+        } catch (e: Exception) {
+            emptyList()
+        }
+        val remoteGradeByUuid = remoteGrades.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
+        val remoteGradeByName = remoteGrades.filter { it.gradeName.isNotBlank() }.associateBy { it.gradeName.trim().lowercase() }
+        val remoteGradeById = remoteGrades.filter { it.id != null }.associateBy { it.id!! }
+
+        val remoteSubjects = try {
+            client.from("subjects").select().decodeList<SubjectSupabaseDto>()
+        } catch (e: Exception) {
+            emptyList()
+        }
+        val remoteSubjByUuid = remoteSubjects.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
+        val remoteSubjByName = remoteSubjects.filter { it.name.isNotBlank() }.associateBy { it.name.trim().lowercase() }
+        val remoteSubjById = remoteSubjects.filter { it.id != null }.associateBy { it.id!! }
+
+        val allLocalGrades = dao.getAllGradesSync().associateBy { it.id }
+        val allLocalSubjects = dao.getAllSubjectsSync().associateBy { it.id }
+
         try {
             val localRefs = dao.getGradeSubjectCrossRefs()
             if (localRefs.isNotEmpty()) {
-                val dtos = localRefs.map { GradeSubjectCrossRefSupabaseDto.fromEntity(it) }
-                client.from("grade_subject_cross_ref").upsert(dtos)
-                pushed = dtos.size
+                val dtos = mutableListOf<GradeSubjectCrossRefSupabaseDto>()
+                for (ref in localRefs) {
+                    val localGrade = allLocalGrades[ref.gradeId]
+                    val localSubject = allLocalSubjects[ref.subjectId]
+
+                    val remoteGrade = if (localGrade != null) {
+                        (if (localGrade.uuid.isNotBlank()) remoteGradeByUuid[localGrade.uuid] else null)
+                            ?: remoteGradeByName[localGrade.gradeName.trim().lowercase()]
+                            ?: (localToRemoteGradeIdCache[ref.gradeId]?.let { remoteGradeById[it] })
+                    } else null
+
+                    val remoteSubject = if (localSubject != null) {
+                        (if (localSubject.uuid.isNotBlank()) remoteSubjByUuid[localSubject.uuid] else null)
+                            ?: remoteSubjByName[localSubject.name.trim().lowercase()]
+                            ?: (localToRemoteSubjectIdCache[ref.subjectId]?.let { remoteSubjById[it] })
+                    } else null
+
+                    val targetGradeId = remoteGrade?.id
+                        ?: localToRemoteGradeIdCache[ref.gradeId]
+                        ?: if (remoteGradeById.containsKey(ref.gradeId)) ref.gradeId else null
+
+                    val targetSubjectId = remoteSubject?.id
+                        ?: localToRemoteSubjectIdCache[ref.subjectId]
+                        ?: if (remoteSubjById.containsKey(ref.subjectId)) ref.subjectId else null
+
+                    // SAFETY: Guard against foreign key violations when remote entities are missing
+                    if (targetGradeId == null || (remoteGradeById.isNotEmpty() && !remoteGradeById.containsKey(targetGradeId))) {
+                        Log.w(TAG, "Skipping grade_subject_cross_ref push for gradeId ${ref.gradeId}: remote grade ID $targetGradeId not present in remote grades table")
+                        continue
+                    }
+                    if (targetSubjectId == null || (remoteSubjById.isNotEmpty() && !remoteSubjById.containsKey(targetSubjectId))) {
+                        Log.w(TAG, "Skipping grade_subject_cross_ref push for subjectId ${ref.subjectId}: remote subject ID $targetSubjectId not present in remote subjects table")
+                        continue
+                    }
+
+                    dtos.add(GradeSubjectCrossRefSupabaseDto(gradeId = targetGradeId, subjectId = targetSubjectId))
+                }
+
+                if (dtos.isNotEmpty()) {
+                    try {
+                        client.from("grade_subject_cross_ref").upsert(dtos, onConflict = "grade_id,subject_id")
+                    } catch (e: Exception) {
+                        client.from("grade_subject_cross_ref").upsert(dtos)
+                    }
+                    pushed = dtos.size
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to push grade_subject_cross_ref: ${e.message}")
@@ -1298,9 +1450,33 @@ class SyncRepository(
         try {
             val remoteDtos = client.from("grade_subject_cross_ref").select().decodeList<GradeSubjectCrossRefSupabaseDto>()
             if (remoteDtos.isNotEmpty()) {
-                val entities = remoteDtos.map { it.toEntity() }
-                dao.insertGradeSubjectCrossRefs(entities)
-                pulled = entities.size
+                val localByGradeUuid = allLocalGrades.values.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
+                val localByGradeName = allLocalGrades.values.filter { it.gradeName.isNotBlank() }.associateBy { it.gradeName.trim().lowercase() }
+                val localBySubjUuid = allLocalSubjects.values.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
+                val localBySubjName = allLocalSubjects.values.filter { it.name.isNotBlank() }.associateBy { it.name.trim().lowercase() }
+
+                val entities = mutableListOf<GradeSubjectCrossRef>()
+                for (remoteDto in remoteDtos) {
+                    val remoteG = remoteGradeById[remoteDto.gradeId]
+                    val localGId = remoteToLocalGradeIdCache[remoteDto.gradeId]
+                        ?: (remoteG?.uuid?.let { localByGradeUuid[it]?.id })
+                        ?: (remoteG?.gradeName?.let { localByGradeName[it.trim().lowercase()]?.id })
+                        ?: if (allLocalGrades.containsKey(remoteDto.gradeId)) remoteDto.gradeId else null
+
+                    val remoteS = remoteSubjById[remoteDto.subjectId]
+                    val localSId = remoteToLocalSubjectIdCache[remoteDto.subjectId]
+                        ?: (remoteS?.uuid?.let { localBySubjUuid[it]?.id })
+                        ?: (remoteS?.name?.let { localBySubjName[it.trim().lowercase()]?.id })
+                        ?: if (allLocalSubjects.containsKey(remoteDto.subjectId)) remoteDto.subjectId else null
+
+                    if (localGId != null && localSId != null) {
+                        entities.add(GradeSubjectCrossRef(gradeId = localGId, subjectId = localSId))
+                    }
+                }
+                if (entities.isNotEmpty()) {
+                    dao.insertGradeSubjectCrossRefs(entities)
+                    pulled = entities.size
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to pull remote grade_subject_cross_ref: ${e.message}")
@@ -1920,9 +2096,12 @@ class SyncRepository(
                 val existingRemote = remoteByUuid[assignedUuid] ?: remoteByName[updated.categoryName]
 
                 val targetUuid = existingRemote?.uuid ?: assignedUuid
-                val dto = HolisticCategorySupabaseDto.fromEntity(updated).copy(
+                val baseDto = HolisticCategorySupabaseDto.fromEntity(updated)
+                val existingCode = existingRemote?.code?.ifBlank { null }
+                val dto = baseDto.copy(
                     id = existingRemote?.id,
-                    uuid = targetUuid
+                    uuid = targetUuid,
+                    code = existingCode ?: baseDto.code.ifBlank { "CAT_${updated.id.takeIf { it > 0 } ?: targetUuid.take(8).uppercase()}" }
                 )
                 client.from("holistic_categories").upsert(dto, onConflict = "uuid")
                 dao.markHolisticCategorySynced(updated.id, targetUuid)

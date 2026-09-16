@@ -1318,6 +1318,7 @@ fun BackupRestoreSection(
     var clearAssessmentsCheck by remember { mutableStateOf(false) }
     var factoryResetConfirmText by remember { mutableStateOf("") }
     var showSupabaseSchemaGuideDialog by remember { mutableStateOf(false) }
+    val pendingChangesCount by com.example.data.sync.SyncManager.pendingChangesCount.collectAsState()
 
     val backupFilePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -1543,6 +1544,27 @@ fun BackupRestoreSection(
                             Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Schema Setup")
+                        }
+                    }
+
+                    if (pendingChangesCount > 0) {
+                        OutlinedButton(
+                            onClick = {
+                                com.example.data.sync.SyncManager.clearAllPendingChanges(context)
+                                Toast.makeText(
+                                    context,
+                                    "Pending စာရင်း ($pendingChangesCount) ခုကို အောင်မြင်စွာ ရှင်းလင်းပြီးပါပြီ",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFFE65100)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Pending ($pendingChangesCount) စာရင်းရှင်းမည် (Clear Pending)")
                         }
                     }
                 }

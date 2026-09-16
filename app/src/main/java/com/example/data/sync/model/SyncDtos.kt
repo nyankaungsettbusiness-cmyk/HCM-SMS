@@ -11,10 +11,12 @@ data class StudentSupabaseDto(
     val id: Long? = null,
     val uuid: String = "",
     @SerialName("student_id") val studentId: String = "",
+    @SerialName("admission_no") val admissionNo: String? = null,
     val name: String = "",
     val grade: String = "",
     @SerialName("class_name") val className: String = "",
-    val gender: String = "",
+    val gender: String = "Male",
+    val dob: String? = null,
     @SerialName("date_of_birth") val dateOfBirth: String = "",
     @SerialName("parent_name") val parentName: String = "",
     @SerialName("parent_phone") val parentPhone: String = "",
@@ -29,12 +31,14 @@ data class StudentSupabaseDto(
     fun toEntity(existingLocalId: Long = 0, existingRollNumber: Int = 0): StudentEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val parsedCreatedAt = parseIsoToMillis(createdAt)
+        val effectiveCode = studentId.ifBlank { admissionNo ?: "" }
+        val effectiveDob = dateOfBirth.ifBlank { dob ?: "" }
         return StudentEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
-            studentCode = studentId,
+            studentCode = effectiveCode,
             name = name,
             gender = gender,
-            dateOfBirth = dateOfBirth,
+            dateOfBirth = effectiveDob,
             gradeName = grade,
             className = className,
             rollNumber = existingRollNumber,
@@ -55,15 +59,19 @@ data class StudentSupabaseDto(
     companion object {
         fun fromEntity(entity: StudentEntity): StudentSupabaseDto {
             val validUuid = entity.uuid.ifBlank { UUID.randomUUID().toString() }
+            val effectiveCode = entity.studentCode.ifBlank { "STU-${entity.id}" }
+            val effectiveDob = entity.dateOfBirth.ifBlank { "2015-01-01" }
             return StudentSupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
-                studentId = entity.studentCode,
+                studentId = effectiveCode,
+                admissionNo = effectiveCode,
                 name = entity.name,
                 grade = entity.gradeName,
                 className = entity.className,
-                gender = entity.gender,
-                dateOfBirth = entity.dateOfBirth,
+                gender = entity.gender.ifBlank { "Male" },
+                dob = effectiveDob,
+                dateOfBirth = effectiveDob,
                 parentName = entity.parentName,
                 parentPhone = entity.phone,
                 address = entity.address,
@@ -226,6 +234,7 @@ data class UserSupabaseDto(
 data class SchoolSettingSupabaseDto(
     val id: Long? = null,
     val uuid: String = "",
+    @SerialName("school_name") val schoolName: String? = null,
     @SerialName("school_name_en") val schoolNameEn: String = "Hein Chan Myae",
     @SerialName("school_name_my") val schoolNameMy: String = "",
     val motto: String = "",
@@ -245,9 +254,10 @@ data class SchoolSettingSupabaseDto(
 ) {
     fun toEntity(existingLocalId: Int = 1): SchoolSettingEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
+        val effectiveName = schoolNameEn.ifBlank { schoolName ?: "Hein Chan Myae" }
         return SchoolSettingEntity(
             id = existingLocalId,
-            schoolName = schoolNameEn,
+            schoolName = effectiveName,
             academicYear = currentAcademicYear,
             contactPhone = phone,
             email = email,
@@ -273,6 +283,7 @@ data class SchoolSettingSupabaseDto(
             return SchoolSettingSupabaseDto(
                 id = entity.id.toLong(),
                 uuid = validUuid,
+                schoolName = entity.schoolName,
                 schoolNameEn = entity.schoolName,
                 schoolNameMy = "",
                 motto = entity.motto,
@@ -298,6 +309,7 @@ data class SchoolSettingSupabaseDto(
 data class GradeSupabaseDto(
     val id: Long? = null,
     val uuid: String = "",
+    val name: String? = null,
     @SerialName("grade_name") val gradeName: String = "",
     @SerialName("education_level") val educationLevel: String = "PRIMARY",
     @SerialName("report_card_template") val reportCardTemplate: String = "Standard",
@@ -307,9 +319,10 @@ data class GradeSupabaseDto(
     fun toEntity(existingLocalId: Long = 0): GradeEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val level = try { EducationLevel.valueOf(educationLevel) } catch (e: Exception) { EducationLevel.PRIMARY }
+        val effectiveName = gradeName.ifBlank { name ?: "" }
         return GradeEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
-            gradeName = gradeName,
+            gradeName = effectiveName,
             educationLevel = level,
             reportCardTemplate = reportCardTemplate,
             uuid = uuid.ifBlank { UUID.randomUUID().toString() },
@@ -325,6 +338,7 @@ data class GradeSupabaseDto(
             return GradeSupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
+                name = entity.gradeName,
                 gradeName = entity.gradeName,
                 educationLevel = entity.educationLevel.name,
                 reportCardTemplate = entity.reportCardTemplate,
@@ -340,6 +354,7 @@ data class SchoolClassSupabaseDto(
     val id: Long? = null,
     val uuid: String = "",
     @SerialName("grade_id") val gradeId: Long = 0L,
+    val name: String? = null,
     @SerialName("class_name") val className: String = "",
     val capacity: Int = 40,
     @SerialName("updated_at") val updatedAt: String? = null,
@@ -347,10 +362,11 @@ data class SchoolClassSupabaseDto(
 ) {
     fun toEntity(existingLocalId: Long = 0, resolvedGradeId: Long = gradeId): SchoolClassEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
+        val effectiveName = className.ifBlank { name ?: "" }
         return SchoolClassEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             gradeId = resolvedGradeId,
-            className = className,
+            className = effectiveName,
             capacity = capacity,
             uuid = uuid.ifBlank { UUID.randomUUID().toString() },
             updatedAt = if (parsedUpdatedAt > 0) parsedUpdatedAt else System.currentTimeMillis(),
@@ -366,6 +382,7 @@ data class SchoolClassSupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
                 gradeId = entity.gradeId,
+                name = entity.className,
                 className = entity.className,
                 capacity = entity.capacity,
                 updatedAt = millisToIso(entity.updatedAt),
@@ -379,6 +396,7 @@ data class SchoolClassSupabaseDto(
 data class SubjectSupabaseDto(
     val id: Long? = null,
     val uuid: String = "",
+    val code: String? = null,
     @SerialName("subject_code") val subjectCode: String = "",
     val name: String = "",
     val category: String = "ACADEMIC",
@@ -413,10 +431,12 @@ data class SubjectSupabaseDto(
     companion object {
         fun fromEntity(entity: SubjectEntity): SubjectSupabaseDto {
             val validUuid = entity.uuid.ifBlank { UUID.randomUUID().toString() }
+            val resolvedCode = if (entity.uuid.isNotBlank()) entity.uuid else entity.name
             return SubjectSupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
-                subjectCode = if (entity.uuid.isNotBlank()) entity.uuid else entity.name,
+                code = resolvedCode,
+                subjectCode = resolvedCode,
                 name = entity.name,
                 category = entity.category.name,
                 educationLevel = entity.educationLevel.name,
@@ -502,7 +522,9 @@ data class CustomExamSupabaseDto(
     val id: Long? = null,
     val uuid: String = "",
     @SerialName("grade_id") val gradeId: Long = 0L,
+    val name: String? = null,
     @SerialName("exam_name") val examName: String = "",
+    @SerialName("exam_date") val examDate: String? = null,
     @SerialName("is_enabled") val isEnabled: Boolean = true,
     val description: String = "",
     @SerialName("updated_at") val updatedAt: String? = null,
@@ -510,10 +532,11 @@ data class CustomExamSupabaseDto(
 ) {
     fun toEntity(existingLocalId: Long = 0): CustomExamEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
+        val effectiveName = examName.ifBlank { name ?: "" }
         return CustomExamEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             gradeId = gradeId,
-            examName = examName,
+            examName = effectiveName,
             isEnabled = isEnabled,
             description = description,
             uuid = uuid.ifBlank { UUID.randomUUID().toString() },
@@ -530,7 +553,9 @@ data class CustomExamSupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
                 gradeId = entity.gradeId,
+                name = entity.examName,
                 examName = entity.examName,
+                examDate = "2026-06-01",
                 isEnabled = entity.isEnabled,
                 description = entity.description,
                 updatedAt = millisToIso(entity.updatedAt),
@@ -546,6 +571,9 @@ data class GradingPolicySupabaseDto(
     val uuid: String = "",
     @SerialName("education_level") val educationLevel: String = "PRIMARY",
     @SerialName("subject_name") val subjectName: String = "",
+    @SerialName("grade_letter") val gradeLetter: String? = "A",
+    @SerialName("min_score") val minScore: Double? = 0.0,
+    @SerialName("max_score") val maxScore: Double? = 100.0,
     @SerialName("max_mark") val maxMark: Int = 100,
     @SerialName("pass_mark") val passMark: Int = 40,
     @SerialName("distinction_mark") val distinctionMark: Int = 75,
@@ -577,6 +605,9 @@ data class GradingPolicySupabaseDto(
                 uuid = validUuid,
                 educationLevel = entity.educationLevel.name,
                 subjectName = entity.subjectName,
+                gradeLetter = "A",
+                minScore = entity.passMark.toDouble(),
+                maxScore = entity.maxMark.toDouble(),
                 maxMark = entity.maxMark,
                 passMark = entity.passMark,
                 distinctionMark = entity.distinctionMark,
@@ -592,6 +623,8 @@ data class AssessmentSupabaseDto(
     val id: Long? = null,
     val uuid: String = "",
     val title: String = "",
+    val date: String? = null,
+    val month: String? = null,
     val grade: String = "",
     val subject: String = "",
     @SerialName("assessment_type") val assessmentType: String = "",
@@ -610,6 +643,8 @@ data class AssessmentSupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val parsedCreatedAt = parseIsoToMillis(createdAt)
         val parsedStatus = try { AssessmentStatus.valueOf(status) } catch (e: Exception) { AssessmentStatus.DRAFT }
+        val effectiveMonth = if (assessmentPeriod.isNotBlank()) assessmentPeriod else (month ?: "Monthly")
+        val effectiveDate = if (dateConducted.isNotBlank()) dateConducted else (date ?: "2026-06-01")
         return AssessmentEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             academicYear = academicYear,
@@ -620,8 +655,8 @@ data class AssessmentSupabaseDto(
             assessmentType = assessmentType,
             assessmentName = title,
             maxMarks = maxMarks.toInt(),
-            assessmentDate = dateConducted,
-            month = assessmentPeriod,
+            assessmentDate = effectiveDate,
+            month = effectiveMonth,
             description = description,
             status = parsedStatus,
             createdBy = createdBy,
@@ -636,17 +671,20 @@ data class AssessmentSupabaseDto(
     companion object {
         fun fromEntity(entity: AssessmentEntity): AssessmentSupabaseDto {
             val validUuid = entity.uuid.ifBlank { UUID.randomUUID().toString() }
+            val effectiveDate = entity.assessmentDate.ifBlank { "2026-06-01" }
             return AssessmentSupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
                 title = entity.assessmentName,
+                date = effectiveDate,
+                month = entity.month.ifBlank { "Monthly" },
                 grade = entity.grade,
                 subject = entity.subjectName,
                 assessmentType = entity.assessmentType,
                 assessmentPeriod = entity.month.ifBlank { "Monthly" },
                 academicYear = entity.academicYear,
                 maxMarks = entity.maxMarks.toDouble(),
-                dateConducted = entity.assessmentDate,
+                dateConducted = effectiveDate,
                 description = entity.description,
                 status = entity.status.name,
                 createdBy = entity.createdBy,
@@ -665,6 +703,8 @@ data class StudentMarkSupabaseDto(
     @SerialName("assessment_id") val assessmentId: Long = 0L,
     @SerialName("student_id") val studentId: Long = 0L,
     @SerialName("marks_obtained") val marksObtained: Double = 0.0,
+    val value: Double? = null,
+    val score: Double? = null,
     @SerialName("is_absent") val isAbsent: Boolean = false,
     @SerialName("is_exempt") val isExempt: Boolean = false,
     @SerialName("is_passed") val isPassed: Boolean = false,
@@ -884,6 +924,7 @@ data class AssessmentResultPushDto(
 data class HolisticCategorySupabaseDto(
     val id: Long? = null,
     val uuid: String = "",
+    val code: String = "",
     val name: String = "",
     val domain: String = "",
     @SerialName("category_name") val categoryName: String = "",
@@ -897,7 +938,7 @@ data class HolisticCategorySupabaseDto(
 ) {
     fun toEntity(existingLocalId: Long = 0): HolisticCategoryEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
-        val resolvedName = categoryName.ifBlank { name }
+        val resolvedName = categoryName.ifBlank { name }.ifBlank { code }
         return HolisticCategoryEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             categoryName = resolvedName,
@@ -919,9 +960,11 @@ data class HolisticCategorySupabaseDto(
         fun fromEntity(entity: HolisticCategoryEntity): HolisticCategorySupabaseDto {
             val validUuid = entity.uuid.ifBlank { UUID.randomUUID().toString() }
             val validName = entity.categoryName
+            val validCode = "CAT_${if (entity.id > 0) entity.id else validUuid.take(8).uppercase()}"
             return HolisticCategorySupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
+                code = validCode,
                 name = validName,
                 domain = entity.pillar,
                 categoryName = validName,
@@ -945,6 +988,7 @@ data class HolisticResultSupabaseDto(
     @SerialName("category_id") val categoryId: Long = 0L,
     @SerialName("assessment_period") val assessmentPeriod: String = "",
     @SerialName("academic_year") val academicYear: String = "",
+    val rating: Int = 0,
     @SerialName("rating_stars") val ratingStars: Int = 0,
     @SerialName("max_stars") val maxStars: Int = 5,
     @SerialName("updated_at") val updatedAt: String? = null,
@@ -960,6 +1004,7 @@ data class HolisticResultSupabaseDto(
         className: String = ""
     ): HolisticResultEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
+        val resolvedRating = if (ratingStars > 0) ratingStars else rating
         return HolisticResultEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             studentId = resolvedStudentId,
@@ -969,7 +1014,7 @@ data class HolisticResultSupabaseDto(
             className = className,
             categoryId = resolvedCategoryId,
             categoryName = categoryName,
-            ratingStars = ratingStars,
+            ratingStars = resolvedRating,
             maxStars = maxStars,
             updatedAt = if (parsedUpdatedAt > 0) parsedUpdatedAt else System.currentTimeMillis(),
             updatedBy = updatedBy,
@@ -989,6 +1034,7 @@ data class HolisticResultSupabaseDto(
                 categoryId = entity.categoryId,
                 assessmentPeriod = entity.assessmentPeriod,
                 academicYear = entity.academicYear,
+                rating = entity.ratingStars,
                 ratingStars = entity.ratingStars,
                 maxStars = entity.maxStars,
                 updatedAt = millisToIso(entity.updatedAt),
@@ -1006,6 +1052,7 @@ data class HolisticResultPushDto(
     @SerialName("category_id") val categoryId: Long = 0L,
     @SerialName("assessment_period") val assessmentPeriod: String = "",
     @SerialName("academic_year") val academicYear: String = "",
+    val rating: Int = 0,
     @SerialName("rating_stars") val ratingStars: Int = 0,
     @SerialName("max_stars") val maxStars: Int = 5,
     @SerialName("updated_at") val updatedAt: String? = null,
@@ -1025,6 +1072,7 @@ data class HolisticResultPushDto(
                 categoryId = targetCategoryId,
                 assessmentPeriod = entity.assessmentPeriod,
                 academicYear = entity.academicYear,
+                rating = entity.ratingStars,
                 ratingStars = entity.ratingStars,
                 maxStars = entity.maxStars,
                 updatedAt = millisToIso(entity.updatedAt),
@@ -1434,6 +1482,7 @@ data class AttendanceRecordPushDto(
 data class AcademicYearSupabaseDto(
     val id: Long? = null,
     val uuid: String = "",
+    val name: String? = null,
     @SerialName("year_name") val yearName: String = "",
     @SerialName("start_date") val startDate: String = "",
     @SerialName("end_date") val endDate: String = "",
@@ -1447,10 +1496,11 @@ data class AcademicYearSupabaseDto(
     fun toEntity(existingLocalId: Long = 0): AcademicYearEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val parsedStatus = try { AcademicYearStatus.valueOf(status) } catch (e: Exception) { AcademicYearStatus.UPCOMING }
+        val effectiveName = yearName.ifBlank { name ?: "" }
         return AcademicYearEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
-            yearCode = yearName,
-            displayName = if (yearName.isNotBlank()) "$yearName Academic Year" else "Academic Year",
+            yearCode = effectiveName,
+            displayName = if (effectiveName.isNotBlank()) "$effectiveName Academic Year" else "Academic Year",
             startDate = startDate,
             endDate = endDate,
             status = parsedStatus,
@@ -1470,9 +1520,10 @@ data class AcademicYearSupabaseDto(
             return AcademicYearSupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
+                name = entity.yearCode,
                 yearName = entity.yearCode,
-                startDate = entity.startDate,
-                endDate = entity.endDate,
+                startDate = entity.startDate.ifBlank { "2026-06-01" },
+                endDate = entity.endDate.ifBlank { "2027-03-31" },
                 status = entity.status.name,
                 isCurrentActive = entity.isCurrentActive,
                 closedDate = entity.closedDate,

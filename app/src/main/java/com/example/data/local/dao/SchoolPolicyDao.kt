@@ -86,6 +86,9 @@ interface SchoolPolicyDao {
     @Query("SELECT * FROM subjects WHERE isDeleted = 0 ORDER BY id ASC")
     fun getAllSubjects(): Flow<List<SubjectEntity>>
 
+    @Query("SELECT * FROM subjects WHERE isDeleted = 0 ORDER BY id ASC")
+    suspend fun getAllSubjectsSync(): List<SubjectEntity>
+
     @Query("SELECT * FROM subjects WHERE category = :category AND isDeleted = 0 ORDER BY id ASC")
     fun getSubjectsByCategory(category: SubjectCategory): Flow<List<SubjectEntity>>
 

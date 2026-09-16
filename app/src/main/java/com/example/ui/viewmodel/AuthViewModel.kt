@@ -287,6 +287,12 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
         }
     }
 
+    fun clearPendingSyncFlags(context: android.content.Context? = null) {
+        viewModelScope.launch {
+            com.example.data.sync.SyncManager.clearAllPendingChanges(context)
+        }
+    }
+
     fun deleteUser(userId: Long, onResult: ((Result<DeletionVerificationResult>) -> Unit)? = null) {
         softDeleteUser(userId, onResult)
     }

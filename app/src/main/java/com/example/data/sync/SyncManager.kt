@@ -562,6 +562,26 @@ object SyncManager {
         }
     }
 
+    /**
+     * Instantly clears all local pending dirty marks across all database tables.
+     * Resets pending count to 0 and clears the outbox.
+     */
+    fun clearAllPendingChanges(context: Context? = null) {
+        val ctx = context?.applicationContext ?: appContext ?: return
+        coroutineScope.launch {
+            try {
+                val db = AppDatabase.getInstance(ctx)
+                val repository = SyncRepository(db)
+                repository.clearAllDirtyFlags(db)
+                _pendingChangesCount.value = 0
+                _syncState.value = SyncStatus.Idle
+                refreshPendingChangesCount(ctx)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in clearAllPendingChanges: ${e.message}", e)
+            }
+        }
+    }
+
     fun schedulePeriodicSync(context: Context? = null, intervalMinutes: Long = 240) {
         val ctx = context?.applicationContext ?: appContext ?: return
         appContext = ctx

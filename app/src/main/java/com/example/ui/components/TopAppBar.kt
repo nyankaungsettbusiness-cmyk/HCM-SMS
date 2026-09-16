@@ -555,15 +555,35 @@ fun HcmTopAppBar(
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        com.example.data.sync.SyncManager.triggerSyncAsync(context, forceImmediate = true)
-                        showConnectionDialog = false
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (pendingChangesCount > 0) {
+                        OutlinedButton(
+                            onClick = {
+                                com.example.data.sync.SyncManager.clearAllPendingChanges(context)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Pending စာရင်း ($pendingChangesCount) ခုကို ရှင်းလင်းပြီးပါပြီ",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                showConnectionDialog = false
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFFE65100)
+                            )
+                        ) {
+                            Text("Pending ရှင်းမည်")
+                        }
                     }
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Sync On-Demand")
+                    Button(
+                        onClick = {
+                            com.example.data.sync.SyncManager.triggerSyncAsync(context, forceImmediate = true)
+                            showConnectionDialog = false
+                        }
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Sync Now")
+                    }
                 }
             },
             dismissButton = {
