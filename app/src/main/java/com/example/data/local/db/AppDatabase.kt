@@ -378,13 +378,6 @@ abstract class AppDatabase : RoomDatabase() {
                         ensureDefaultReportTemplates(reportDao)
                     }
 
-                    // Auto-seed initial default admin ONLY if users table is completely empty
-                    val userDao = database.userDao()
-                    val allUsers = userDao.getAllUsersList()
-                    if (allUsers.isEmpty()) {
-                        seedDefaultAdminUsers(userDao)
-                    }
-
                     // Auto-assign clean UUIDs to any pre-seeded system rows so they never appear as pending changes
                     try {
                         val dbWriter = database.openHelper.writableDatabase
@@ -836,39 +829,6 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
             reportDao.insertTemplates(templates)
-        }
-
-        suspend fun seedDefaultAdminUsers(userDao: UserDao) {
-            val allUsers = userDao.getAllUsersList()
-            // If the system has any users registered, never auto-seed
-            if (allUsers.isNotEmpty()) return
-
-            val existingAdmin = userDao.getUserByUsernameIncludingDeleted("admin")
-            // If admin was ever created (even if soft-deleted), respect user deletion and never recreate
-            if (existingAdmin != null) return
-
-            userDao.insertUser(
-                UserEntity(
-                    id = 0,
-                    username = "admin",
-                    fullName = "Super Administrator",
-                    role = UserRole.SUPER_ADMIN,
-                    email = "admin@hcm.edu.mm",
-                    phone = "+95 9 790001122",
-                    passwordHash = com.example.util.PasswordHasher.hashPassword("Password123!"),
-                    salt = com.example.util.PasswordHasher.DEFAULT_SALT,
-                    isActive = true,
-                    status = UserStatus.ACTIVE,
-                    mustChangePassword = false,
-                    failedLoginAttempts = 0,
-                    isDeleted = false,
-                    uuid = java.util.UUID.randomUUID().toString(),
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis(),
-                    isDirty = false,
-                    managedPassword = "Password123!"
-                )
-            )
         }
     }
 }

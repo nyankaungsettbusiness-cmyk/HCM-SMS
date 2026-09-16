@@ -33,9 +33,10 @@ object AppUpdateManager {
 
     // Repositories to check for releases (matching the actual GitHub repo name)
     private val REPO_CANDIDATES = listOf(
+        "nyankaungsettbusiness-cmyk/HCM-SMS",
+        "nyankaungsett-business/HCM-SMS",
         "nyankaungsett-business/HCM-SMS-Update-",
-        "nyankaungsett-business/hcm-sms",
-        "nyankaungsett-business/HCM-SMS"
+        "nyankaungsett-business/hcm-sms"
     )
 
     /**

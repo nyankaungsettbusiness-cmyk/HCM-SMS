@@ -2155,27 +2155,88 @@ private fun RolePermissionsTabContent(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Compact Role Selector
+        // Role Selector Row + Bulk Action Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            UserRole.values().forEach { role ->
-                val isSelected = selectedRole == role
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { selectedRole = role },
-                    label = { Text(role.displayName, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.height(32.dp)
-                )
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                UserRole.values().forEach { role ->
+                    val isSelected = selectedRole == role
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { selectedRole = role },
+                        label = { Text(role.displayName, fontSize = 11.5.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(34.dp)
+                    )
+                }
+            }
+
+            if (selectedRole != UserRole.SUPER_ADMIN) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            modules.forEach { (moduleKey, _) ->
+                                actions.forEach { (actionKey, _) ->
+                                    val permKey = "${moduleKey}_${actionKey}"
+                                    authViewModel.updatePermission(
+                                        RolePermissionEntity(
+                                            role = selectedRole,
+                                            permissionKey = permKey,
+                                            isAllowed = true
+                                        )
+                                    )
+                                }
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(32.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Grant All", fontSize = 10.5.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            modules.forEach { (moduleKey, _) ->
+                                actions.forEach { (actionKey, _) ->
+                                    val permKey = "${moduleKey}_${actionKey}"
+                                    authViewModel.updatePermission(
+                                        RolePermissionEntity(
+                                            role = selectedRole,
+                                            permissionKey = permKey,
+                                            isAllowed = false
+                                        )
+                                    )
+                                }
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(32.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.RemoveDone, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Revoke All", fontSize = 10.5.sp)
+                    }
+                }
             }
         }
 
         if (selectedRole == UserRole.SUPER_ADMIN) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)),
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Column(
@@ -2184,8 +2245,8 @@ private fun RolePermissionsTabContent(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary)
-                    Text("Super Admin Master Access", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Super Admin has full unrestricted access to all 15 modules. Permissions cannot be restricted for this role.", textAlign = TextAlign.Center, fontSize = 11.sp)
+                    Text("Super Admin Master Privileges", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Super Admin has full unrestricted access to all 15 modules. Permissions are automatically granted and cannot be restricted for this role.", textAlign = TextAlign.Center, fontSize = 11.5.sp)
                 }
             }
         } else {
@@ -2204,38 +2265,111 @@ private fun RolePermissionsTabContent(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                            Text(moduleTitle, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(moduleTitle, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.primary)
+
+                                // Quick module-level toggle buttons
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(
+                                        onClick = {
+                                            actions.forEach { (actionKey, _) ->
+                                                val permKey = "${moduleKey}_${actionKey}"
+                                                authViewModel.updatePermission(
+                                                    RolePermissionEntity(
+                                                        role = selectedRole,
+                                                        permissionKey = permKey,
+                                                        isAllowed = true
+                                                    )
+                                                )
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Text("All", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            actions.forEach { (actionKey, _) ->
+                                                val permKey = "${moduleKey}_${actionKey}"
+                                                authViewModel.updatePermission(
+                                                    RolePermissionEntity(
+                                                        role = selectedRole,
+                                                        permissionKey = permKey,
+                                                        isAllowed = false
+                                                    )
+                                                )
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Text("None", fontSize = 10.sp, color = Color.Gray)
+                                    }
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(4.dp))
 
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 actions.forEach { (actionKey, actionTitle) ->
                                     val permKey = "${moduleKey}_${actionKey}"
                                     val isAllowed = rolePermissions.find { it.role == selectedRole && it.permissionKey == permKey }?.isAllowed ?: false
 
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        Switch(
-                                            checked = isAllowed,
-                                            onCheckedChange = { checked ->
-                                                authViewModel.updatePermission(
-                                                    RolePermissionEntity(
-                                                        role = selectedRole,
-                                                        permissionKey = permKey,
-                                                        isAllowed = checked
-                                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (isAllowed) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                        border = BorderStroke(
+                                            0.5.dp,
+                                            if (isAllowed) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                        ),
+                                        modifier = Modifier.clickable {
+                                            authViewModel.updatePermission(
+                                                RolePermissionEntity(
+                                                    role = selectedRole,
+                                                    permissionKey = permKey,
+                                                    isAllowed = !isAllowed
                                                 )
-                                            },
-                                            modifier = Modifier.scale(0.7f)
-                                        )
-                                        Text(actionTitle, fontSize = 11.sp)
+                                            )
+                                        }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Switch(
+                                                checked = isAllowed,
+                                                onCheckedChange = { checked ->
+                                                    authViewModel.updatePermission(
+                                                        RolePermissionEntity(
+                                                            role = selectedRole,
+                                                            permissionKey = permKey,
+                                                            isAllowed = checked
+                                                        )
+                                                    )
+                                                },
+                                                modifier = Modifier.scale(0.72f)
+                                            )
+                                            Text(
+                                                actionTitle,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isAllowed) FontWeight.SemiBold else FontWeight.Normal,
+                                                color = if (isAllowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }

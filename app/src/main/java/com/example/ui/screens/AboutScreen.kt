@@ -10,19 +10,28 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import com.example.BuildConfig
+import com.example.data.util.AppUpdateInfo
+import com.example.data.util.AppUpdateManager
+import com.example.ui.components.AppUpdateDialog
 import com.example.ui.util.rememberSchoolLogo
+import kotlinx.coroutines.launch
 
 @Composable
 fun AboutScreen(
@@ -30,6 +39,10 @@ fun AboutScreen(
     schoolLogoUri: String? = null
 ) {
     val scrollState = rememberScrollState()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var activeUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
 
     Column(
         modifier = Modifier
@@ -96,17 +109,75 @@ fun AboutScreen(
             )
         }
 
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.secondaryContainer
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = "Version 1.3.0",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-            )
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Text(
+                    text = "Version ${BuildConfig.VERSION_NAME.ifBlank { "1.3.0" }}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                )
+            }
+
+            FilledTonalButton(
+                onClick = {
+                    if (!isCheckingUpdate) {
+                        isCheckingUpdate = true
+                        coroutineScope.launch {
+                            try {
+                                val result = AppUpdateManager.checkForUpdates(
+                                    currentVersion = BuildConfig.VERSION_NAME.ifBlank { "1.3.0" }
+                                )
+                                if (result.hasUpdate) {
+                                    activeUpdateInfo = result
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "You are using the latest version (${BuildConfig.VERSION_NAME.ifBlank { "1.3.0" }})",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(
+                                    context,
+                                    "Failed to check updates: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } finally {
+                                isCheckingUpdate = false
+                            }
+                        }
+                    }
+                },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(30.dp),
+                enabled = !isCheckingUpdate
+            ) {
+                if (isCheckingUpdate) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Checking...", fontSize = 11.sp)
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.SystemUpdate,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Check for Updates", fontSize = 11.sp)
+                }
+            }
         }
 
         Card(
@@ -197,6 +268,13 @@ fun AboutScreen(
         }
 
         Spacer(modifier = Modifier.height(8.dp))
+    }
+
+    activeUpdateInfo?.let { info ->
+        AppUpdateDialog(
+            updateInfo = info,
+            onDismiss = { activeUpdateInfo = null }
+        )
     }
 }
 

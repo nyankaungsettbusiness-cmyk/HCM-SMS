@@ -69,12 +69,22 @@ jobs:
           name: app-release-apk
           path: ${{ steps.locate_apk.outputs.apk_path }}
 
+      - name: Determine Release Tag
+        id: release_tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="v1.4.0"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.locate_apk.outputs.apk_path }}
-          tag_name: "v1.0-latest"
-          name: "Latest Build Release (v1.0)"
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: "Latest Build Release (${{ steps.release_tag.outputs.tag }})"
           body: |
             Automated Release Build for HCM School Management System.
             Download and install the latest attached APK on your device.

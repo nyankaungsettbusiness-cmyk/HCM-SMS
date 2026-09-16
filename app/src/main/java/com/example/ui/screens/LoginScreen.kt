@@ -51,9 +51,6 @@ fun LoginScreen(
 
     val isSyncingUsers by authViewModel.isSyncingUsers.collectAsState()
     val allUsers by authViewModel.allUsers.collectAsState()
-    val hasCustomAdmin = remember(allUsers) {
-        allUsers.any { !it.username.equals("admin", ignoreCase = true) && (it.role == UserRole.ADMIN || it.role == UserRole.SUPER_ADMIN) && !it.isDeleted }
-    }
 
     // Automatically sync accounts from cloud on first open
     LaunchedEffect(Unit) {
@@ -330,13 +327,13 @@ fun LoginScreen(
                     }
                 }
 
-                // Sync & First-time setup action row
+                // Sync Accounts Action Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (!hasCustomAdmin) Arrangement.SpaceBetween else Arrangement.Center,
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(
+                    FilledTonalButton(
                         onClick = {
                             syncMessage = null
                             authViewModel.syncCloudUsers { res ->
@@ -348,70 +345,20 @@ fun LoginScreen(
                             }
                         },
                         enabled = !isSyncingUsers,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(
                             Icons.Default.CloudSync,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Sync Accounts", fontSize = 12.sp)
-                    }
-
-                    if (!hasCustomAdmin) {
-                        TextButton(
-                            onClick = {
-                                username = "admin"
-                                password = "Password123!"
-                                errorMessage = null
-                                authViewModel.seedDefaultAdmin { res ->
-                                    res.onSuccess {
-                                        syncMessage = "Default admin ready! Press 'Log In' to enter."
-                                    }.onFailure {
-                                        errorMessage = "Setup error: ${it.message}"
-                                    }
-                                }
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.AdminPanelSettings,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("First-Time Setup Admin", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-
-                if (!hasCustomAdmin) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "First-time setup? Tap 'First-Time Setup Admin' above or enter:",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Text(
-                                text = "Username: admin   |   Password: Password123!",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            if (isSyncingUsers) "Syncing Accounts..." else "Sync Cloud Accounts",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }

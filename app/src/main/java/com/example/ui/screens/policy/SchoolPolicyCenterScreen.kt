@@ -1,6 +1,7 @@
 package com.example.ui.screens.policy
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -10,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -79,8 +81,7 @@ fun SchoolPolicyCenterScreen(
         "Grades & Classes",
         "Subjects",
         "Grading Policy",
-        "Role Permissions",
-        "School Info"
+        "Role Permissions"
     )
 
     Column(
@@ -146,7 +147,6 @@ fun SchoolPolicyCenterScreen(
                 1 -> SubjectConfigTab(policyViewModel)
                 2 -> GradingPolicyTab(policyViewModel)
                 3 -> PermissionConfigTab(authViewModel)
-                4 -> SchoolInfoTab(policyViewModel)
             }
         }
     }
@@ -170,11 +170,19 @@ fun GradeConfigTab(viewModel: SchoolPolicyViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Grade Structure (KG, G1 - G12)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Button(onClick = { showAddGradeDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Add Grade")
+            Column {
+                Text("Grade & Class Structure", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("Manage KG, Primary (G1-G5), Secondary (G6-G9) & High School (G10-G12)", fontSize = 11.sp, color = Color.Gray)
+            }
+            Button(
+                onClick = { showAddGradeDialog = true },
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+            ) {
+                Icon(Icons.Default.AddCircleOutline, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Add Grade", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -264,37 +272,64 @@ fun GradeConfigTab(viewModel: SchoolPolicyViewModel) {
 
         AlertDialog(
             onDismissRequest = { showAddGradeDialog = false },
-            title = { Text("Add Grade") },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Add New Academic Grade", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("Grade Name (e.g. G10, G13)") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("Grade Code / Name (e.g. G1, G10)") },
+                        placeholder = { Text("e.g. G1, G7, G11") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
                     )
-                    Text("Education Level:", fontWeight = FontWeight.Bold)
-                    EducationLevel.values().forEach { lvl ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = level == lvl,
-                                onClick = { level = lvl }
+
+                    Text("Education Level:", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        EducationLevel.values().forEach { lvl ->
+                            val isSelected = level == lvl
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { level = lvl },
+                                label = { Text(lvl.displayName, fontSize = 11.5.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                shape = RoundedCornerShape(8.dp)
                             )
-                            Text(lvl.displayName)
                         }
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    if (name.isNotBlank()) {
-                        viewModel.addGrade(name, level, "Standard")
-                        showAddGradeDialog = false
-                    }
-                }) { Text("Save") }
+                Button(
+                    onClick = {
+                        if (name.isNotBlank()) {
+                            viewModel.addGrade(name.trim(), level, "Standard")
+                            showAddGradeDialog = false
+                        }
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = name.isNotBlank()
+                ) {
+                    Text("Create Grade")
+                }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showAddGradeDialog = false }) { Text("Cancel") }
+                OutlinedButton(
+                    onClick = { showAddGradeDialog = false },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -393,12 +428,13 @@ fun SubjectConfigTab(viewModel: SchoolPolicyViewModel) {
             }
             Button(
                 onClick = { showAddSubjectDialog = true },
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                modifier = Modifier.height(34.dp)
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Add Subject", fontSize = 12.sp)
+                Icon(Icons.Default.AddCircleOutline, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Add Subject", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -547,28 +583,37 @@ fun SubjectConfigTab(viewModel: SchoolPolicyViewModel) {
 
         AlertDialog(
             onDismissRequest = { showAddSubjectDialog = false },
-            title = { Text("Configure New Subject", fontSize = 16.sp) },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Add Academic Subject", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
                         label = { Text("Subject Name *") },
+                        placeholder = { Text("e.g. Mathematics, Myanmar, Chemistry") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
                     )
 
                     Text("Subject Category:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = category == SubjectCategory.ACADEMIC,
                             onClick = { category = SubjectCategory.ACADEMIC },
-                            label = { Text("Academic Subject", fontSize = 11.sp) }
+                            label = { Text("Academic Subject", fontSize = 11.5.sp) },
+                            shape = RoundedCornerShape(8.dp)
                         )
                         FilterChip(
                             selected = category == SubjectCategory.ADDITIONAL,
                             onClick = { category = SubjectCategory.ADDITIONAL },
-                            label = { Text("Additional Subject", fontSize = 11.sp) }
+                            label = { Text("Additional Subject", fontSize = 11.5.sp) },
+                            shape = RoundedCornerShape(8.dp)
                         )
                     }
 
@@ -577,19 +622,21 @@ fun SubjectConfigTab(viewModel: SchoolPolicyViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         EducationLevel.values().forEach { lvl ->
                             val shortLabel = when (lvl) {
                                 EducationLevel.KINDERGARTEN -> "KG"
-                                EducationLevel.PRIMARY -> "Primary"
-                                EducationLevel.SECONDARY -> "Secondary"
-                                EducationLevel.HIGH_SCHOOL -> "High School"
+                                EducationLevel.PRIMARY -> "Primary (G1-5)"
+                                EducationLevel.SECONDARY -> "Secondary (G6-9)"
+                                EducationLevel.HIGH_SCHOOL -> "High School (G10-12)"
                             }
+                            val isSelected = level == lvl
                             FilterChip(
-                                selected = level == lvl,
+                                selected = isSelected,
                                 onClick = { level = lvl },
-                                label = { Text(shortLabel, fontSize = 11.sp) }
+                                label = { Text(shortLabel, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                shape = RoundedCornerShape(8.dp)
                             )
                         }
                     }
@@ -612,6 +659,7 @@ fun SubjectConfigTab(viewModel: SchoolPolicyViewModel) {
                                 readOnly = true,
                                 label = { Text("High School Stream *", fontSize = 12.sp) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trackExpanded) },
+                                shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.menuAnchor().fillMaxWidth()
                             )
                             ExposedDropdownMenu(
@@ -637,15 +685,26 @@ fun SubjectConfigTab(viewModel: SchoolPolicyViewModel) {
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    if (name.isNotBlank()) {
-                        viewModel.addSubject(name, category, level, track, isCustom = true)
-                        showAddSubjectDialog = false
-                    }
-                }) { Text("Save") }
+                Button(
+                    onClick = {
+                        if (name.isNotBlank()) {
+                            viewModel.addSubject(name.trim(), category, level, track, isCustom = true)
+                            showAddSubjectDialog = false
+                        }
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = name.isNotBlank()
+                ) {
+                    Text("Create Subject")
+                }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showAddSubjectDialog = false }) { Text("Cancel") }
+                OutlinedButton(
+                    onClick = { showAddSubjectDialog = false },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -945,128 +1004,212 @@ fun GradingPolicyTab(viewModel: SchoolPolicyViewModel) {
 }
 
 // -------------------------------------------------------------
-// 5. Permission Configuration Tab
+// 4. Permission Configuration Tab
 // -------------------------------------------------------------
 @Composable
 fun PermissionConfigTab(authViewModel: AuthViewModel) {
     val permissions by authViewModel.rolePermissions.collectAsState()
     var selectedRole by remember { mutableStateOf(UserRole.ADMIN) }
+    var searchQuery by remember { mutableStateOf("") }
 
     val rolePermissionsFiltered = permissions.filter { it.role == selectedRole }
+        .filter { searchQuery.isBlank() || it.permissionKey.contains(searchQuery, ignoreCase = true) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Dynamic Role & Permission Matrix", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Text("Configure permissions for each user role.", fontSize = 11.sp, color = Color.Gray)
+    val isSuperAdmin = selectedRole == UserRole.SUPER_ADMIN
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Header with quick actions
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("Role & Permission Access Control", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(
+                    if (isSuperAdmin) "Super Admin has unrestricted master access to all operations"
+                    else "Configure specific permission grants for ${selectedRole.displayName}",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+            }
+
+            if (!isSuperAdmin) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            rolePermissionsFiltered.forEach { perm ->
+                                if (!perm.isAllowed) {
+                                    authViewModel.updatePermission(perm.copy(isAllowed = true))
+                                }
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(34.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Grant All", fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            rolePermissionsFiltered.forEach { perm ->
+                                if (perm.isAllowed) {
+                                    authViewModel.updatePermission(perm.copy(isAllowed = false))
+                                }
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(34.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.RemoveDone, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Revoke All", fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        // Role Filter Chips Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             UserRole.values().forEach { role ->
+                val isSelected = selectedRole == role
                 FilterChip(
-                    selected = selectedRole == role,
+                    selected = isSelected,
                     onClick = { selectedRole = role },
-                    label = { Text(role.displayName, fontSize = 11.sp) },
-                    modifier = Modifier.weight(1f).height(30.dp)
+                    label = { Text(role.displayName, fontSize = 11.5.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(34.dp)
                 )
             }
         }
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(rolePermissionsFiltered, key = { "${it.role}_${it.permissionKey}" }) { perm ->
-                Card(
-                    shape = RoundedCornerShape(6.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
+        // Quick Search within Permissions
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Filter permissions by key (e.g. STUDENTS, ATTENDANCE)...", fontSize = 12.sp) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        )
+
+        if (isSuperAdmin) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(perm.permissionKey, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                        Switch(
-                            checked = perm.isAllowed,
-                            onCheckedChange = { allowed ->
-                                authViewModel.updatePermission(perm.copy(isAllowed = allowed))
-                            },
-                            enabled = selectedRole != UserRole.SUPER_ADMIN,
-                            modifier = Modifier.scale(0.75f)
+                    Icon(
+                        Icons.Default.VerifiedUser,
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Column {
+                        Text("Super Admin Master Permissions", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(
+                            "Super Administrator bypasses permission checks and has full system privileges across all modules and functions.",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
         }
-    }
-}
 
-// -------------------------------------------------------------
-// 6. School Info Tab
-// -------------------------------------------------------------
-@Composable
-fun SchoolInfoTab(viewModel: SchoolPolicyViewModel) {
-    val settings by viewModel.schoolSettings.collectAsState()
-
-    var name by remember(settings) { mutableStateOf(settings?.schoolName ?: "Hein Chan Myae") }
-    var year by remember(settings) { mutableStateOf(settings?.academicYear ?: "2026-2027") }
-    var phone by remember(settings) { mutableStateOf(settings?.contactPhone ?: "") }
-    var email by remember(settings) { mutableStateOf(settings?.email ?: "") }
-    var address by remember(settings) { mutableStateOf(settings?.address ?: "") }
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text("School Information & Branding", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("School Name", fontSize = 12.sp) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = year,
-                onValueChange = { year = it },
-                label = { Text("Academic Year", fontSize = 12.sp) },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-
-            OutlinedTextField(
-                value = phone,
-                onValueChange = { phone = it },
-                label = { Text("Contact Phone", fontSize = 12.sp) },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("School Email", fontSize = 12.sp) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-            value = address,
-            onValueChange = { address = it },
-            label = { Text("Address", fontSize = 12.sp) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Button(
-            onClick = {
-                android.util.Log.d("AcademicYearDebug", "UI_CLICK: Save School Settings clicked with year='$year'")
-                viewModel.updateSchoolSettings(name, year, phone, email, address)
-            },
-            modifier = Modifier.fillMaxWidth()
+        // Permissions List with full-row clickability and convenient touch targets
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            contentPadding = PaddingValues(bottom = 16.dp)
         ) {
-            Text("Save School Settings", fontSize = 12.sp)
+            items(rolePermissionsFiltered, key = { "${it.role}_${it.permissionKey}" }) { perm ->
+                Card(
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (perm.isAllowed) MaterialTheme.colorScheme.surface
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ),
+                    border = BorderStroke(
+                        0.5.dp,
+                        if (perm.isAllowed) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !isSuperAdmin) {
+                            authViewModel.updatePermission(perm.copy(isAllowed = !perm.isAllowed))
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (perm.isAllowed) Color(0xFF2E7D32) else Color.Gray.copy(alpha = 0.5f))
+                            )
+                            Column {
+                                Text(
+                                    text = perm.permissionKey,
+                                    fontWeight = if (perm.isAllowed) FontWeight.SemiBold else FontWeight.Normal,
+                                    fontSize = 12.5.sp,
+                                    color = if (perm.isAllowed) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = if (perm.isAllowed) "Granted" else "Denied",
+                                    fontSize = 10.sp,
+                                    color = if (perm.isAllowed) Color(0xFF2E7D32) else Color.Gray
+                                )
+                            }
+                        }
+
+                        Switch(
+                            checked = if (isSuperAdmin) true else perm.isAllowed,
+                            onCheckedChange = { allowed ->
+                                authViewModel.updatePermission(perm.copy(isAllowed = allowed))
+                            },
+                            enabled = !isSuperAdmin,
+                            modifier = Modifier.scale(0.85f)
+                        )
+                    }
+                }
+            }
         }
     }
 }
