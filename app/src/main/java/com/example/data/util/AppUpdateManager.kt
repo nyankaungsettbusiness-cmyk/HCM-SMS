@@ -31,67 +31,77 @@ data class AppUpdateInfo(
 object AppUpdateManager {
     private const val TAG = "AppUpdateManager"
 
-    // Optional override or fallback repository (owner/repo)
-    private const val DEFAULT_REPO = "nyankaungsett-business/hcm-sms"
+    // Repositories to check for releases (matching the actual GitHub repo name)
+    private val REPO_CANDIDATES = listOf(
+        "nyankaungsett-business/HCM-SMS-Update-",
+        "nyankaungsett-business/hcm-sms",
+        "nyankaungsett-business/HCM-SMS"
+    )
 
     /**
      * Checks GitHub Releases for a newer version than current BuildConfig.VERSION_NAME
      */
     suspend fun checkForUpdates(
-        repoSlug: String = DEFAULT_REPO,
+        repoSlug: String? = null,
         currentVersion: String = BuildConfig.VERSION_NAME
     ): AppUpdateInfo = withContext(Dispatchers.IO) {
-        try {
-            val endpoint = "https://api.github.com/repos/$repoSlug/releases/latest"
-            val url = URL(endpoint)
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                setRequestProperty("Accept", "application/vnd.github.v3+json")
-                setRequestProperty("User-Agent", "HCM-SMS-Android")
-                connectTimeout = 8000
-                readTimeout = 8000
-            }
+        val reposToCheck = if (!repoSlug.isNullOrBlank()) listOf(repoSlug) else REPO_CANDIDATES
 
-            if (connection.responseCode == 200) {
-                val responseText = connection.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONObject(responseText)
-                val tagName = json.optString("tag_name", "").removePrefix("v")
-                val cleanTagName = tagName.substringBefore("-build").substringBefore("-")
-                val releaseNotes = json.optString("body", "Bug fixes and improvements.")
-                val publishedAt = json.optString("published_at", "")
+        for (repo in reposToCheck) {
+            try {
+                val endpoint = "https://api.github.com/repos/$repo/releases/latest"
+                val url = URL(endpoint)
+                val connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    setRequestProperty("Accept", "application/vnd.github.v3+json")
+                    setRequestProperty("User-Agent", "HCM-SMS-Android")
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                }
 
-                // Look for .apk asset
-                var apkUrl = ""
-                val assets: JSONArray = json.optJSONArray("assets") ?: JSONArray()
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name", "")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        apkUrl = asset.optString("browser_download_url", "")
-                        break
+                if (connection.responseCode == 200) {
+                    val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(responseText)
+                    val tagName = json.optString("tag_name", "").removePrefix("v")
+                    val cleanTagName = tagName.substringBefore("-build").substringBefore("-")
+                    val releaseNotes = json.optString("body", "Bug fixes and improvements.")
+                    val publishedAt = json.optString("published_at", "")
+
+                    // Look for .apk asset
+                    var apkUrl = ""
+                    val assets: JSONArray = json.optJSONArray("assets") ?: JSONArray()
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        val name = asset.optString("name", "")
+                        if (name.endsWith(".apk", ignoreCase = true)) {
+                            apkUrl = asset.optString("browser_download_url", "")
+                            break
+                        }
                     }
+
+                    // If no asset found, fallback to html_url
+                    if (apkUrl.isBlank()) {
+                        apkUrl = json.optString("html_url", "")
+                    }
+
+                    val isNewer = isVersionNewer(cleanTagName, currentVersion)
+
+                    if (isNewer && apkUrl.isNotBlank()) {
+                        return@withContext AppUpdateInfo(
+                            hasUpdate = true,
+                            latestVersionName = cleanTagName.ifBlank { tagName },
+                            currentVersionName = currentVersion,
+                            releaseNotes = releaseNotes,
+                            apkDownloadUrl = apkUrl,
+                            publishedAt = publishedAt
+                        )
+                    }
+                } else {
+                    Log.w(TAG, "GitHub API for $repo returned HTTP ${connection.responseCode}")
                 }
-
-                // If no asset found, fallback to html_url
-                if (apkUrl.isBlank()) {
-                    apkUrl = json.optString("html_url", "")
-                }
-
-                val isNewer = isVersionNewer(cleanTagName, currentVersion)
-
-                return@withContext AppUpdateInfo(
-                    hasUpdate = isNewer,
-                    latestVersionName = cleanTagName.ifBlank { tagName },
-                    currentVersionName = currentVersion,
-                    releaseNotes = releaseNotes,
-                    apkDownloadUrl = apkUrl,
-                    publishedAt = publishedAt
-                )
-            } else {
-                Log.w(TAG, "GitHub API returned HTTP ${connection.responseCode}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to check for updates from $repo", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to check for updates", e)
         }
 
         return@withContext AppUpdateInfo(
