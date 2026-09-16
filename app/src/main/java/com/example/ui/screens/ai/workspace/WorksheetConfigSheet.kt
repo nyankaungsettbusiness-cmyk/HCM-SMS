@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.viewmodel.AiAssistantViewModel
@@ -215,7 +216,7 @@ fun WorksheetConfigSheet(
                     ) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Generate Grounded Worksheet (${state.totalQuestions} items)")
+                        Text("Generate Worksheet (${state.totalQuestions} items)", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

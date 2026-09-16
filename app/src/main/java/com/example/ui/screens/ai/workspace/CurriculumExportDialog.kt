@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -498,63 +499,58 @@ fun CurriculumExportDialog(
 
                 // 5. Action Buttons (Preview, Print, Share, Save to Downloads)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Preview Button
                     OutlinedButton(
                         onClick = { triggerPreview() },
                         enabled = !isGenerating,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("btn_export_preview"),
+                        modifier = Modifier.testTag("btn_export_preview"),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Preview", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Preview", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
 
                     // Print Button
                     OutlinedButton(
                         onClick = { triggerPrint() },
                         enabled = !isGenerating,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("btn_export_print"),
+                        modifier = Modifier.testTag("btn_export_print"),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Print", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Print", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
 
                     // Share Button
                     OutlinedButton(
                         onClick = { triggerShare() },
                         enabled = !isGenerating,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("btn_export_share"),
+                        modifier = Modifier.testTag("btn_export_share"),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Share", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Share", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
 
                     // Save to Downloads Button
                     Button(
                         onClick = { triggerSaveToDownloads() },
                         enabled = !isGenerating,
-                        modifier = Modifier
-                            .weight(1.1f)
-                            .testTag("btn_export_save"),
+                        modifier = Modifier.testTag("btn_export_save"),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         if (isGenerating) {
                             CircularProgressIndicator(
@@ -563,9 +559,9 @@ fun CurriculumExportDialog(
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Save", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     }
                 }

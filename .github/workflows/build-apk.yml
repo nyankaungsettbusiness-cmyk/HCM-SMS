@@ -26,12 +26,22 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew || true
 
       - name: Build Debug & Release APK
         run: |
-          ./gradlew assembleRelease || ./gradlew assembleDebug
+          if ./gradlew --version >/dev/null 2>&1; then
+            ./gradlew assembleRelease || ./gradlew assembleDebug
+          else
+            echo "gradle-wrapper.jar invalid or missing, falling back to installed Gradle runner..."
+            gradle assembleRelease || gradle assembleDebug
+          fi
 
       - name: Locate APK
         id: locate_apk

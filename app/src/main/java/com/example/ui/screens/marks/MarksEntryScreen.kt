@@ -132,9 +132,9 @@ fun MarksEntryScreen(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp),
+                            .defaultMinSize(minHeight = 38.dp),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                     ) {
                         Icon(
                             if (isLocked) Icons.Default.Edit else Icons.Default.Clear,
@@ -161,10 +161,10 @@ fun MarksEntryScreen(
                         enabled = !isLocked,
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp),
+                            .defaultMinSize(minHeight = 38.dp),
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -186,10 +186,10 @@ fun MarksEntryScreen(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp),
+                            .defaultMinSize(minHeight = 38.dp),
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                     ) {
                         Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -517,9 +518,11 @@ private fun ReportCardsScreenContent(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Action Toolbar: Preview / Download / Print action buttons
+                    // Action Toolbar: Preview / Download / Print action buttons (Scrollable Row for phone/compact screens)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -527,13 +530,12 @@ private fun ReportCardsScreenContent(
                             onClick = {
                                 showPreviewModal = true
                             },
-                            modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Preview PDF", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Preview PDF", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
 
                         OutlinedButton(
@@ -542,24 +544,22 @@ private fun ReportCardsScreenContent(
                                 val (success, message) = ReportCardGenerator(context).saveToDownloads(pdfFile, data)
                                 showMessage(message)
                             },
-                            modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Download PDF", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Download PDF", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
 
                         OutlinedButton(
                             onClick = { showTestManagerModal = true },
-                            modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
                         ) {
                             Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Manage Tests", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Manage Tests", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
 
                         OutlinedButton(
@@ -568,22 +568,20 @@ private fun ReportCardsScreenContent(
                                 printPdfFile(context, pdfFile, "ReportCard_${data.student.studentCode}")
                                 showMessage("Printing Report Card...")
                             },
-                            modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
                         ) {
                             Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Print PDF", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Print PDF", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
 
                         Button(
                             onClick = {
                                 reportViewModel.generateAiCommentForSelectedStudent(language = "MYANMAR")
                             },
-                            modifier = Modifier.weight(1.1f),
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
                             if (isGeneratingAiComment) {
@@ -593,11 +591,11 @@ private fun ReportCardsScreenContent(
                                     strokeWidth = 2.dp
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Generating...", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Generating...", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                             } else {
                                 Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("AI Comment", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("AI Comment", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
                     }

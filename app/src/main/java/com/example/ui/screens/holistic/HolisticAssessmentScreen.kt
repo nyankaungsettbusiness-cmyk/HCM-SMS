@@ -582,15 +582,15 @@ fun HolisticAssessmentScreen(
                                     },
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.weight(1f),
-                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                 ) {
                                     Icon(
                                         if (isLocked) Icons.Default.Edit else Icons.Default.ArrowBack,
                                         contentDescription = null,
                                         modifier = Modifier.size(14.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(if (isLocked) "Cancel / Edit" else "Back to List", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(if (isLocked) "Edit" else "Back", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 }
 
                                 Button(
@@ -604,13 +604,13 @@ fun HolisticAssessmentScreen(
                                     },
                                     enabled = canEdit && !isLocked,
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1.2f),
+                                    modifier = Modifier.weight(1.1f),
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                 ) {
-                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Save & Record", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text("Save", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                                 }
 
                                 if (nextStudent != null) {
@@ -625,13 +625,13 @@ fun HolisticAssessmentScreen(
                                         },
                                         enabled = canEdit,
                                         shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.weight(1.3f),
+                                        modifier = Modifier.weight(1.1f),
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                                        contentPadding = PaddingValues(vertical = 8.dp)
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                     ) {
-                                        Text("Save & Next", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Text("Next", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp))
                                     }
                                 }
                             }

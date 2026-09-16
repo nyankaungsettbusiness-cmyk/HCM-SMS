@@ -175,9 +175,9 @@ fun AttendanceManagementScreen(
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp),
+                                .defaultMinSize(minHeight = 38.dp),
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                         ) {
                             Text(if (isLocked) "Edit" else "Cancel", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
@@ -193,10 +193,10 @@ fun AttendanceManagementScreen(
                             enabled = !isSaving && canEdit && !isLocked,
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp),
+                                .defaultMinSize(minHeight = 38.dp),
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                         ) {
                             Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -214,10 +214,10 @@ fun AttendanceManagementScreen(
                             enabled = !isSaving && canEdit,
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp),
+                                .defaultMinSize(minHeight = 38.dp),
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                         ) {
                             Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))

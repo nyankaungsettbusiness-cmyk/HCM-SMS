@@ -124,7 +124,7 @@ fun UsersScreen(
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // 1. Compact Module Header Bar (No duplicate TopAppBar navigation icon)
+        // 1. Compact Module Header Bar (Responsive & overflow-safe)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -133,6 +133,7 @@ fun UsersScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
+                modifier = Modifier.weight(1f, fill = false),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -150,7 +151,7 @@ fun UsersScreen(
                         )
                     }
                 }
-                Column {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -159,8 +160,9 @@ fun UsersScreen(
                             text = "User & Roles",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
+                                fontSize = 14.5.sp
+                            ),
+                            maxLines = 1
                         )
                         Surface(
                             shape = RoundedCornerShape(6.dp),
@@ -181,10 +183,14 @@ fun UsersScreen(
                         text = "Accounts, Passwords & Access Control",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 10.5.sp
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.width(6.dp))
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -201,10 +207,9 @@ fun UsersScreen(
                             ).show()
                         }
                     },
-                    modifier = Modifier.height(36.dp),
                     shape = RoundedCornerShape(10.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 0.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                 ) {
                     if (isSyncingUsers || syncStatus is com.example.data.sync.SyncStatus.Syncing) {
                         CircularProgressIndicator(
@@ -212,8 +217,8 @@ fun UsersScreen(
                             strokeWidth = 2.dp,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text("Syncing", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Syncing", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium, maxLines = 1)
                     } else {
                         Icon(
                             Icons.Default.CloudSync,
@@ -221,12 +226,13 @@ fun UsersScreen(
                             tint = if (pendingCount > 0) Color(0xFFE65100) else Color(0xFF2E7D32),
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(5.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (pendingCount > 0) "$pendingCount Pending" else "Synced",
+                            text = if (pendingCount > 0) "$pendingCount" else "Sync",
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (pendingCount > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
+                            color = if (pendingCount > 0) Color(0xFFE65100) else Color(0xFF2E7D32),
+                            maxLines = 1
                         )
                     }
                 }
@@ -251,8 +257,7 @@ fun UsersScreen(
                 // Add / Create Account Primary Action Button
                 Button(
                     onClick = { showCreateUserDialog = true },
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                    modifier = Modifier.height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -263,14 +268,15 @@ fun UsersScreen(
                     Icon(
                         Icons.Default.PersonAdd,
                         contentDescription = "Create Account",
-                        modifier = Modifier.size(17.dp)
+                        modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "Create Account",
+                        text = "Create",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.2.sp
+                        letterSpacing = 0.2.sp,
+                        maxLines = 1
                     )
                 }
             }
@@ -618,18 +624,19 @@ private fun CompactUserStatsHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             CompactStatPill(label = "Total", value = totalCount.toString(), color = MaterialTheme.colorScheme.primary)
-            VerticalDivider(modifier = Modifier.height(20.dp))
+            VerticalDivider(modifier = Modifier.height(16.dp))
             CompactStatPill(label = "Active", value = activeCount.toString(), color = Color(0xFF2E7D32))
-            VerticalDivider(modifier = Modifier.height(20.dp))
-            CompactStatPill(label = "Cloud Synced", value = syncedCount.toString(), color = Color(0xFF1565C0))
-            VerticalDivider(modifier = Modifier.height(20.dp))
+            VerticalDivider(modifier = Modifier.height(16.dp))
+            CompactStatPill(label = "Synced", value = syncedCount.toString(), color = Color(0xFF1565C0))
+            VerticalDivider(modifier = Modifier.height(16.dp))
             CompactStatPill(
-                label = "Pending Sync",
+                label = "Pending",
                 value = pendingCount.toString(),
                 color = if (pendingCount > 0) Color(0xFFE65100) else Color(0xFF757575),
                 modifier = if (pendingCount > 0) {
