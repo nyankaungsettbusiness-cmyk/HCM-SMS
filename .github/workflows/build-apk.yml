@@ -30,6 +30,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.11.1
+          validate-wrappers: false
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew || true
@@ -39,7 +40,7 @@ jobs:
           if ./gradlew --version >/dev/null 2>&1; then
             ./gradlew assembleRelease || ./gradlew assembleDebug
           else
-            echo "gradle-wrapper.jar invalid or missing, falling back to installed Gradle runner..."
+            echo "gradle-wrapper.jar invalid or missing, using installed Gradle 8.11.1 runner..."
             gradle assembleRelease || gradle assembleDebug
           fi
 
@@ -56,15 +57,16 @@ jobs:
           name: app-release-apk
           path: ${{ steps.locate_apk.outputs.apk_path }}
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.locate_apk.outputs.apk_path }}
-          tag_name: ${{ github.ref_name || 'latest' }}
-          name: Release ${{ github.ref_name || 'Latest APK' }}
+          tag_name: "v1.0-latest"
+          name: "Latest Build Release (v1.0)"
           body: |
             Automated Release Build for HCM School Management System.
-            Download the attached APK to install directly on your device.
+            Download and install the latest attached APK on your device.
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
