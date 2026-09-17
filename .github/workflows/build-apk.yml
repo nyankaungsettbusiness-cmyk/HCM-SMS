@@ -35,16 +35,14 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew || true
 
-      - name: Ensure Debug Keystore Exists
+      - name: Ensure Persistent Signing Keystore Exists
         run: |
-          if [ ! -f "debug.keystore" ]; then
-            if [ -f "debug.keystore.base64" ]; then
-              echo "Decoding debug.keystore from debug.keystore.base64..."
-              base64 -d debug.keystore.base64 > debug.keystore
-            else
-              echo "Generating fresh debug.keystore..."
-              keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            fi
+          if [ -f "debug.keystore.base64" ]; then
+            echo "Decoding persistent keystore from debug.keystore.base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f "debug.keystore" ]; then
+            echo "Generating fallback debug.keystore..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
       - name: Build Debug & Release APK
@@ -75,8 +73,14 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v1.4.0"
+            GRADLE_VERSION=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | head -n 1 | cut -d'"' -f2)
+            if [ -n "$GRADLE_VERSION" ]; then
+              TAG="v${GRADLE_VERSION}"
+            else
+              TAG="v1.4.0"
+            fi
           fi
+          echo "Detected Release Tag: $TAG"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Create or Update GitHub Release
@@ -84,10 +88,11 @@ jobs:
         with:
           files: ${{ steps.locate_apk.outputs.apk_path }}
           tag_name: ${{ steps.release_tag.outputs.tag }}
-          name: "Latest Build Release (${{ steps.release_tag.outputs.tag }})"
+          name: "HCM-SMS Build (${{ steps.release_tag.outputs.tag }})"
           body: |
             Automated Release Build for HCM School Management System.
-            Download and install the latest attached APK on your device.
+            Version: ${{ steps.release_tag.outputs.tag }}
+            Download and install the attached APK on your Android device.
           draft: false
           prerelease: false
         env:

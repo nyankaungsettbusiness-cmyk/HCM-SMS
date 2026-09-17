@@ -118,7 +118,7 @@ fun AboutScreen(
                 color = MaterialTheme.colorScheme.secondaryContainer
             ) {
                 Text(
-                    text = "Version ${BuildConfig.VERSION_NAME.ifBlank { "1.3.0" }}",
+                    text = "v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -133,14 +133,14 @@ fun AboutScreen(
                         coroutineScope.launch {
                             try {
                                 val result = AppUpdateManager.checkForUpdates(
-                                    currentVersion = BuildConfig.VERSION_NAME.ifBlank { "1.3.0" }
+                                    currentVersion = BuildConfig.VERSION_NAME
                                 )
                                 if (result.hasUpdate) {
                                     activeUpdateInfo = result
                                 } else {
                                     Toast.makeText(
                                         context,
-                                        "You are using the latest version (${BuildConfig.VERSION_NAME.ifBlank { "1.3.0" }})",
+                                        "You are using the latest version (v${BuildConfig.VERSION_NAME})",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }

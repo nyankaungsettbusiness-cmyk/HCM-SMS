@@ -31,11 +31,13 @@ data class AppUpdateInfo(
 object AppUpdateManager {
     private const val TAG = "AppUpdateManager"
 
-    // Repositories to check for releases (matching the actual GitHub repo name)
+    // Primary GitHub Repository for releases
+    const val DEFAULT_REPO = "nyankaungsettbusiness-cmyk/HCM-SMS"
+
+    // Fallback candidates if the repo was renamed or migrated
     private val REPO_CANDIDATES = listOf(
-        "nyankaungsettbusiness-cmyk/HCM-SMS",
+        DEFAULT_REPO,
         "nyankaungsett-business/HCM-SMS",
-        "nyankaungsett-business/HCM-SMS-Update-",
         "nyankaungsett-business/hcm-sms"
     )
 
@@ -56,11 +58,22 @@ object AppUpdateManager {
                     requestMethod = "GET"
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
                     setRequestProperty("User-Agent", "HCM-SMS-Android")
-                    connectTimeout = 8000
-                    readTimeout = 8000
+                    connectTimeout = 3500 // Quick timeout to prevent UI freezes / log spam
+                    readTimeout = 3500
+                    instanceFollowRedirects = true
                 }
 
-                if (connection.responseCode == 200) {
+                val responseCode = try {
+                    connection.responseCode
+                } catch (timeoutEx: java.net.SocketTimeoutException) {
+                    Log.d(TAG, "GitHub API timeout for $repo (Network restricted or offline)")
+                    continue
+                } catch (ioEx: Exception) {
+                    Log.d(TAG, "GitHub API network unavailable for $repo: ${ioEx.message}")
+                    continue
+                }
+
+                if (responseCode == 200) {
                     val responseText = connection.inputStream.bufferedReader().use { it.readText() }
                     val json = JSONObject(responseText)
                     val tagName = json.optString("tag_name", "").removePrefix("v")
@@ -96,12 +109,17 @@ object AppUpdateManager {
                             apkDownloadUrl = apkUrl,
                             publishedAt = publishedAt
                         )
+                    } else {
+                        // Found valid latest release for this repo and already up to date, no need to check further candidates
+                        break
                     }
+                } else if (responseCode == 404) {
+                    Log.d(TAG, "No public release found for repo: $repo (HTTP 404)")
                 } else {
-                    Log.w(TAG, "GitHub API for $repo returned HTTP ${connection.responseCode}")
+                    Log.w(TAG, "GitHub API for $repo returned HTTP $responseCode")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to check for updates from $repo", e)
+                Log.d(TAG, "Failed to check for updates from $repo: ${e.message}")
             }
         }
 
@@ -116,19 +134,46 @@ object AppUpdateManager {
     }
 
     /**
-     * Downloads APK using Android's built-in DownloadManager and prompts installation
+     * Downloads APK using Android's built-in DownloadManager and prompts installation.
+     * If already downloaded, prompts installation directly.
      */
     fun startDownloadAndInstall(context: Context, apkUrl: String, versionName: String) {
         try {
             if (apkUrl.isBlank()) return
 
-            val uri = Uri.parse(apkUrl)
-            val fileName = "HCM_SMS_Update_$versionName.apk"
+            // Check if unknown app sources permission is granted (Android 8.0+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    val manageIntent = Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:${context.packageName}")
+                    ).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    try {
+                        context.startActivity(manageIntent)
+                        android.widget.Toast.makeText(
+                            context,
+                            "Please allow 'Install unknown apps' for HCM-SMS, then tap Update again.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    } catch (_: Exception) {}
+                }
+            }
 
+            val fileName = "HCM_SMS_v${versionName.replace(' ', '_')}.apk"
+            val targetFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
+            if (targetFile.exists() && targetFile.length() > 1024 * 1024) {
+                // If the APK was already downloaded, install directly
+                installDownloadedApk(context, fileName)
+                return
+            }
+
+            val uri = Uri.parse(apkUrl)
             val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val request = DownloadManager.Request(uri).apply {
-                setTitle("Downloading HCM-SMS Update $versionName")
-                setDescription("Please wait while the update is downloading...")
+                setTitle("HCM-SMS Update $versionName")
+                setDescription("Downloading latest application APK...")
                 setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
                 setAllowedOverMetered(true)
@@ -165,18 +210,29 @@ object AppUpdateManager {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enqueue download", e)
-            // Fallback: Open browser
+            // Fallback: Open browser directly
+            openApkInBrowser(context, apkUrl)
+        }
+    }
+
+    fun openApkInBrowser(context: Context, apkUrl: String) {
+        try {
             val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(browserIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open browser", e)
         }
     }
 
-    private fun installDownloadedApk(context: Context, fileName: String) {
+    fun installDownloadedApk(context: Context, fileName: String) {
         try {
             val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
-            if (!file.exists()) return
+            if (!file.exists()) {
+                Log.w(TAG, "Downloaded file does not exist: ${file.absolutePath}")
+                return
+            }
 
             val apkUri = FileProvider.getUriForFile(
                 context,
@@ -188,10 +244,18 @@ object AppUpdateManager {
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             context.startActivity(installIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch package installer", e)
+            try {
+                android.widget.Toast.makeText(
+                    context,
+                    "Installer could not open automatically. Opening file in browser / files app...",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            } catch (_: Exception) {}
         }
     }
 

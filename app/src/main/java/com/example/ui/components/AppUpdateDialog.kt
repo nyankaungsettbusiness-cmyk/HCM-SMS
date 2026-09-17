@@ -9,6 +9,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -80,7 +82,7 @@ fun AppUpdateDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "A newer version of HCM-SMS is available. To continue using the system smoothly with the latest features, please update now.",
+                    text = "A newer version of HCM-SMS is available. Please update to keep using the system with latest fixes and features.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -115,11 +117,45 @@ fun AppUpdateDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        text = "Downloading update... The installation prompt will open automatically once finished.",
+                        text = "Downloading update... The Android installer will launch automatically once finished.",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                }
+
+                // Extra fallbacks if system install is blocked
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val fileName = "HCM_SMS_v${updateInfo.latestVersionName.replace(' ', '_')}.apk"
+                            AppUpdateManager.installDownloadedApk(context, fileName)
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.weight(1f).height(32.dp)
+                    ) {
+                        Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Open Installer", fontSize = 10.5.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            AppUpdateManager.openApkInBrowser(context, updateInfo.apkDownloadUrl)
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.weight(1f).height(32.dp)
+                    ) {
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Open in Browser", fontSize = 10.5.sp)
+                    }
                 }
             }
         },
