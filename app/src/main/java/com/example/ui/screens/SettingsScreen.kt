@@ -1308,6 +1308,10 @@ fun BackupRestoreSection(
     var pendingBackupContent by remember { mutableStateOf<String?>(null) }
     var pendingFileName by remember { mutableStateOf<String?>(null) }
     var autoBackupSchedule by remember { mutableStateOf("Weekly") }
+    var isManualSyncing by remember { mutableStateOf(false) }
+    var syncFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var syncFeedbackIsError by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
     val schedules = listOf("Off", "Daily", "Weekly", "Monthly")
     val context = LocalContext.current
 
@@ -1522,20 +1526,94 @@ fun BackupRestoreSection(
                         }
                     }
 
+                    if (syncFeedbackMessage != null) {
+                        Surface(
+                            color = if (syncFeedbackIsError) MaterialTheme.colorScheme.errorContainer else Color(0xFFE8F5E9),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, if (syncFeedbackIsError) MaterialTheme.colorScheme.error else Color(0xFF4CAF50)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (syncFeedbackIsError) Icons.Default.Warning else Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = if (syncFeedbackIsError) MaterialTheme.colorScheme.error else Color(0xFF2E7D32),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = syncFeedbackMessage!!,
+                                    fontSize = 11.sp,
+                                    color = if (syncFeedbackIsError) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF1B5E20),
+                                    lineHeight = 15.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = { syncFeedbackMessage = null },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "Dismiss", modifier = Modifier.size(14.dp))
+                                }
+                            }
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Button(
                             onClick = {
-                                com.example.data.sync.SyncManager.triggerSyncAsync(context, forceImmediate = true)
-                                Toast.makeText(context, "Initiated cloud sync...", Toast.LENGTH_SHORT).show()
+                                if (isManualSyncing) return@Button
+                                isManualSyncing = true
+                                syncFeedbackMessage = null
+                                coroutineScope.launch {
+                                    try {
+                                        val result = com.example.data.sync.SyncManager.performDeltaSync(context, forceImmediate = true)
+                                        when (result) {
+                                            is com.example.data.sync.SyncResult.Success -> {
+                                                syncFeedbackIsError = false
+                                                syncFeedbackMessage = "Cloud Sync အောင်မြင်ပါသည် (Cloud မှ ရရှိ: ${result.totalPulled} ခု၊ ပေးပို့: ${result.totalPushed} ခု)"
+                                                Toast.makeText(context, "Sync အောင်မြင်ပါသည် (Pulled: ${result.totalPulled})", Toast.LENGTH_SHORT).show()
+                                            }
+                                            is com.example.data.sync.SyncResult.Error -> {
+                                                syncFeedbackIsError = true
+                                                val msg = result.message
+                                                syncFeedbackMessage = if (msg.contains("RLS") || msg.contains("policy") || msg.contains("401") || msg.contains("403")) {
+                                                    "Sync အမှား: Supabase RLS Policy ခွင့်ပြုချက် လိုအပ်နေပါသည်။ Schema Setup ကို နှိပ်၍ SQL script run ပေးပါ။"
+                                                } else {
+                                                    "Sync မအောင်မြင်ပါ: $msg"
+                                                }
+                                                Toast.makeText(context, "Sync Failed: $msg", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        syncFeedbackIsError = true
+                                        syncFeedbackMessage = "ချိတ်ဆက်မှု ချို့ယွင်းချက်: ${e.localizedMessage ?: "Unknown error"}"
+                                    } finally {
+                                        isManualSyncing = false
+                                    }
+                                }
                             },
+                            enabled = !isManualSyncing,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Sync Now")
+                            if (isManualSyncing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Syncing...")
+                            } else {
+                                Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Sync Now")
+                            }
                         }
 
                         OutlinedButton(

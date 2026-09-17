@@ -59,6 +59,11 @@ fun LoginScreen(
                 if (count > 0) {
                     syncMessage = "$count account(s) synced from cloud."
                 }
+            }.onFailure { ex ->
+                val errorMsg = ex.localizedMessage ?: "Unknown"
+                if (errorMsg.contains("RLS") || errorMsg.contains("policy") || errorMsg.contains("401") || errorMsg.contains("403")) {
+                    syncMessage = "Note: Cloud accounts sync requires Supabase RLS policy setup."
+                }
             }
         }
     }
