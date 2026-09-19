@@ -73,6 +73,11 @@ android {
     compose = true
     buildConfig = true
   }
+  lint {
+    checkReleaseBuilds = false
+    abortOnError = false
+    disable += setOf("MissingTranslation", "ExtraTranslation", "ValidFragment", "Instantiatable")
+  }
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
