@@ -38,14 +38,25 @@ jobs:
         run: chmod +x gradlew || true
 
       - name: Ensure Persistent Signing Keystore Exists
+        env:
+          KEYSTORE_SECRET: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
         run: |
-          if [ -f "debug.keystore.base64" ]; then
-            echo "Decoding persistent keystore from debug.keystore.base64..."
+          if [ -n "$KEYSTORE_SECRET" ]; then
+            echo "Decoding persistent keystore from GitHub secret SIGNING_KEYSTORE_BASE64..."
+            echo "$KEYSTORE_SECRET" | base64 -d > debug.keystore
+          elif [ -f "debug.keystore.base64" ]; then
+            echo "Decoding persistent keystore from repository debug.keystore.base64..."
             base64 -d debug.keystore.base64 > debug.keystore
-          elif [ ! -f "debug.keystore" ]; then
-            echo "Generating fallback debug.keystore..."
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          elif [ -f "debug.keystore" ]; then
+            echo "Using existing repository debug.keystore..."
+          else
+            echo "ERROR: Persistent keystore is missing! Do not generate a random keystore as it causes signature mismatch."
+            exit 1
           fi
+
+          # Verify keystore integrity
+          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey > /dev/null
+          echo "Keystore verified successfully."
 
       - name: Auto-Increment Semantic Versioning
         id: versioning
@@ -84,19 +95,22 @@ jobs:
           echo "version_name=$CLEAN_VERSION" >> $GITHUB_OUTPUT
           echo "version_code=$V_CODE" >> $GITHUB_OUTPUT
 
-      - name: Build Debug & Release APK
+      - name: Build Release APK
         run: |
           if ./gradlew --version >/dev/null 2>&1; then
-            ./gradlew assembleRelease || ./gradlew assembleDebug
+            ./gradlew assembleRelease
           else
             echo "gradle-wrapper.jar invalid or missing, using installed Gradle 8.11.1 runner..."
-            gradle assembleRelease || gradle assembleDebug
+            gradle assembleRelease
           fi
 
       - name: Locate APK
         id: locate_apk
         run: |
-          APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          APK_PATH=$(find app/build/outputs/apk/release -name "*release*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          fi
           echo "Found APK at: $APK_PATH"
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
