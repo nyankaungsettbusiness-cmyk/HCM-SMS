@@ -258,7 +258,11 @@ object PdfReportCardGenerator {
 
     // 2. Student Information
     private fun drawStudentInformation(ctx: PdfRenderContext, data: GeneratedReportCardData) {
-        val secHeight = 22f + 44f + 14f
+        val hasDetailedParents = data.student.fatherName.isNotBlank() || data.student.motherName.isNotBlank()
+        val numRows = if (hasDetailedParents) 3 else 2
+        val infoRowHeight = 22f
+        val infoBoxHeight = infoRowHeight * numRows
+        val secHeight = 22f + infoBoxHeight + 14f
         ctx.ensureSpace(secHeight)
 
         val canvas = ctx.canvas
@@ -294,8 +298,6 @@ object PdfReportCardGenerator {
             val curY = drawSectionHeaderBar(canvas, "1. Student Information", startY)
 
             val infoBoxTop = curY
-            val infoRowHeight = 22f
-            val infoBoxHeight = infoRowHeight * 2
 
             canvas.drawRect(MARGIN_LEFT, infoBoxTop, MARGIN_RIGHT, infoBoxTop + infoBoxHeight, borderPaint)
 
@@ -303,7 +305,7 @@ object PdfReportCardGenerator {
             val col1X = MARGIN_LEFT + 8f
             val col2X = MARGIN_LEFT + halfWidth + 8f
 
-            // Row 1: Student Name | Student ID
+            // Row 1: Student Name | Student ID & NRC
             val r1Y = infoBoxTop + 15f
             canvas.drawText("Student Name: ", col1X, r1Y, boldLabelPaint)
             val nameLabelWidth = boldLabelPaint.measureText("Student Name: ")
@@ -311,20 +313,49 @@ object PdfReportCardGenerator {
 
             canvas.drawText("Student ID: ", col2X, r1Y, boldLabelPaint)
             val idLabelWidth = boldLabelPaint.measureText("Student ID: ")
-            canvas.drawText(data.student.studentCode, col2X + idLabelWidth, r1Y, valTextPaint)
+            val nrcInfo = if (data.student.studentNrc.isNotBlank()) " (NRC: ${data.student.studentNrc})" else ""
+            canvas.drawText("${data.student.studentCode}$nrcInfo", col2X + idLabelWidth, r1Y, valTextPaint)
 
             canvas.drawLine(MARGIN_LEFT, infoBoxTop + infoRowHeight, MARGIN_RIGHT, infoBoxTop + infoRowHeight, innerLinePaint)
             canvas.drawLine(MARGIN_LEFT + halfWidth, infoBoxTop, MARGIN_LEFT + halfWidth, infoBoxTop + infoBoxHeight, innerLinePaint)
 
-            // Row 2: Grade / Class | Parent Name
-            val r2Y = infoBoxTop + infoRowHeight + 15f
-            canvas.drawText("Grade / Class: ", col1X, r2Y, boldLabelPaint)
-            val gcLabelWidth = boldLabelPaint.measureText("Grade / Class: ")
-            canvas.drawText("${data.student.gradeName} / ${data.className}", col1X + gcLabelWidth, r2Y, valTextPaint)
+            if (hasDetailedParents) {
+                // Row 2: Grade / Class | Father Details
+                val r2Y = infoBoxTop + infoRowHeight + 15f
+                canvas.drawText("Grade / Class: ", col1X, r2Y, boldLabelPaint)
+                val gcLabelWidth = boldLabelPaint.measureText("Grade / Class: ")
+                canvas.drawText("${data.student.gradeName} / ${data.className}", col1X + gcLabelWidth, r2Y, valTextPaint)
 
-            canvas.drawText("Parent Name: ", col2X, r2Y, boldLabelPaint)
-            val parentLabelWidth = boldLabelPaint.measureText("Parent Name: ")
-            canvas.drawText(data.student.parentName, col2X + parentLabelWidth, r2Y, valTextPaint)
+                canvas.drawText("Father: ", col2X, r2Y, boldLabelPaint)
+                val fatherLabelWidth = boldLabelPaint.measureText("Father: ")
+                val fNrc = if (data.student.fatherNrc.isNotBlank()) " (${data.student.fatherNrc})" else ""
+                val fDisplay = if (data.student.fatherName.isNotBlank()) "${data.student.fatherName}$fNrc" else "N/A"
+                canvas.drawText(fDisplay, col2X + fatherLabelWidth, r2Y, valTextPaint)
+
+                canvas.drawLine(MARGIN_LEFT, infoBoxTop + (infoRowHeight * 2), MARGIN_RIGHT, infoBoxTop + (infoRowHeight * 2), innerLinePaint)
+
+                // Row 3: Roll Number | Mother Details
+                val r3Y = infoBoxTop + (infoRowHeight * 2) + 15f
+                canvas.drawText("Roll Number: ", col1X, r3Y, boldLabelPaint)
+                val rollLabelWidth = boldLabelPaint.measureText("Roll Number: ")
+                canvas.drawText("#${data.student.rollNumber}", col1X + rollLabelWidth, r3Y, valTextPaint)
+
+                canvas.drawText("Mother: ", col2X, r3Y, boldLabelPaint)
+                val motherLabelWidth = boldLabelPaint.measureText("Mother: ")
+                val mNrc = if (data.student.motherNrc.isNotBlank()) " (${data.student.motherNrc})" else ""
+                val mDisplay = if (data.student.motherName.isNotBlank()) "${data.student.motherName}$mNrc" else "N/A"
+                canvas.drawText(mDisplay, col2X + motherLabelWidth, r3Y, valTextPaint)
+            } else {
+                // Row 2: Grade / Class | Parent Name
+                val r2Y = infoBoxTop + infoRowHeight + 15f
+                canvas.drawText("Grade / Class: ", col1X, r2Y, boldLabelPaint)
+                val gcLabelWidth = boldLabelPaint.measureText("Grade / Class: ")
+                canvas.drawText("${data.student.gradeName} / ${data.className}", col1X + gcLabelWidth, r2Y, valTextPaint)
+
+                canvas.drawText("Parent Name: ", col2X, r2Y, boldLabelPaint)
+                val parentLabelWidth = boldLabelPaint.measureText("Parent Name: ")
+                canvas.drawText(data.student.parentName.ifBlank { "N/A" }, col2X + parentLabelWidth, r2Y, valTextPaint)
+            }
         }
 
         ctx.curY = startY + secHeight

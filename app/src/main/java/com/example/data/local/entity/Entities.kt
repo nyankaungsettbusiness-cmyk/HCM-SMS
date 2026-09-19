@@ -248,6 +248,12 @@ data class StudentEntity(
     val status: String = "Active", // Active, Inactive, Transferred
     val photoAvatarIndex: Int = 0,
     val stream: String = "", // STEAMS-1, STEAMS-2, or ""
+    val photoUrl: String = "", // Local file name, URI, or URL of student's photo
+    val studentNrc: String = "", // Student's NRC / Identity Number
+    val fatherName: String = "", // Father's Name
+    val fatherNrc: String = "", // Father's NRC
+    val motherName: String = "", // Mother's Name
+    val motherNrc: String = "", // Mother's NRC
     val uuid: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),

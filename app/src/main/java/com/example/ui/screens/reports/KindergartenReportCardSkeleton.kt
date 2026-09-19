@@ -125,16 +125,39 @@ fun KindergartenReportCardSkeleton(
                         .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     PrintCellKeyVal("Student Name:", data.student.name, Modifier.weight(1.2f))
-                    PrintCellKeyVal("Student ID:", data.student.studentCode, Modifier.weight(1f))
+                    val idDisplay = if (data.student.studentNrc.isNotBlank()) "${data.student.studentCode} (NRC: ${data.student.studentNrc})" else data.student.studentCode
+                    PrintCellKeyVal("Student ID:", idDisplay, Modifier.weight(1f))
                 }
                 HorizontalDivider(color = Color(0xFFD1D5DB))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    PrintCellKeyVal("Grade / Class:", "${data.student.gradeName} / ${data.className}", Modifier.weight(1.2f))
-                    PrintCellKeyVal("Parent Name:", data.student.parentName, Modifier.weight(1f))
+                if (data.student.fatherName.isNotBlank() || data.student.motherName.isNotBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        PrintCellKeyVal("Grade / Class:", "${data.student.gradeName} / ${data.className}", Modifier.weight(1.2f))
+                        val fNrc = if (data.student.fatherNrc.isNotBlank()) " (${data.student.fatherNrc})" else ""
+                        PrintCellKeyVal("Father:", "${data.student.fatherName.ifBlank { "N/A" }}$fNrc", Modifier.weight(1f))
+                    }
+                    HorizontalDivider(color = Color(0xFFD1D5DB))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        PrintCellKeyVal("Roll Number:", "#${data.student.rollNumber}", Modifier.weight(1.2f))
+                        val mNrc = if (data.student.motherNrc.isNotBlank()) " (${data.student.motherNrc})" else ""
+                        PrintCellKeyVal("Mother:", "${data.student.motherName.ifBlank { "N/A" }}$mNrc", Modifier.weight(1f))
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        PrintCellKeyVal("Grade / Class:", "${data.student.gradeName} / ${data.className}", Modifier.weight(1.2f))
+                        PrintCellKeyVal("Parent Name:", data.student.parentName.ifBlank { "N/A" }, Modifier.weight(1f))
+                    }
                 }
             }
 

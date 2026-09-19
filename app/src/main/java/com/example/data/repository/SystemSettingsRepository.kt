@@ -448,6 +448,12 @@ class SystemSettingsRepository(
                     put("status", st.status)
                     put("photoAvatarIndex", st.photoAvatarIndex)
                     put("stream", st.stream)
+                    put("photoUrl", st.photoUrl)
+                    put("studentNrc", st.studentNrc)
+                    put("fatherName", st.fatherName)
+                    put("fatherNrc", st.fatherNrc)
+                    put("motherName", st.motherName)
+                    put("motherNrc", st.motherNrc)
                     put("createdAt", st.createdAt)
                     put("updatedAt", st.updatedAt)
                     put("isDirty", st.isDirty)
@@ -1110,6 +1116,12 @@ class SystemSettingsRepository(
                                 status = obj.optString("status", "Active"),
                                 photoAvatarIndex = obj.optInt("photoAvatarIndex", 0),
                                 stream = obj.optString("stream", "General"),
+                                photoUrl = obj.optString("photoUrl", ""),
+                                studentNrc = obj.optString("studentNrc", ""),
+                                fatherName = obj.optString("fatherName", ""),
+                                fatherNrc = obj.optString("fatherNrc", ""),
+                                motherName = obj.optString("motherName", ""),
+                                motherNrc = obj.optString("motherNrc", ""),
                                 createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                                 updatedAt = System.currentTimeMillis(),
                                 isDirty = true,

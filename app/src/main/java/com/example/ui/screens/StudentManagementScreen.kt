@@ -3,6 +3,11 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -18,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.GradeEntity
 import com.example.data.local.entity.StudentEntity
 import com.example.data.policy.SchoolPolicy
+import com.example.ui.util.StudentPhotoUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -486,7 +494,11 @@ fun ModernStudentCard(
                 }
             }
 
-            // Row 2: Avatar + Name + Roll/Parent + Quick Actions
+            // Row 2: Avatar + Name + Roll/Parent/NRC + Quick Actions
+            val context = LocalContext.current
+            val photoBitmap = remember(student.photoUrl) {
+                StudentPhotoUtils.loadStudentPhotoImageBitmap(context, student.photoUrl)
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -494,17 +506,27 @@ fun ModernStudentCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(42.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = student.name.take(1).uppercase(),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    if (photoBitmap != null) {
+                        Image(
+                            bitmap = photoBitmap,
+                            contentDescription = "Photo of ${student.name}",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = student.name.take(1).uppercase(),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
 
                 Column(modifier = Modifier.weight(1f)) {
@@ -515,8 +537,17 @@ fun ModernStudentCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    val parentDisplay = student.parentName.ifBlank {
+                        when {
+                            student.fatherName.isNotBlank() && student.motherName.isNotBlank() -> "${student.fatherName} / ${student.motherName}"
+                            student.fatherName.isNotBlank() -> student.fatherName
+                            student.motherName.isNotBlank() -> student.motherName
+                            else -> "N/A"
+                        }
+                    }
+                    val nrcSuffix = if (student.studentNrc.isNotBlank()) " • NRC: ${student.studentNrc}" else ""
                     Text(
-                        text = "Roll #${student.rollNumber} • Parent: ${student.parentName.ifBlank { "N/A" }}",
+                        text = "Roll #${student.rollNumber} • Parent: $parentDisplay$nrcSuffix",
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -606,6 +637,7 @@ fun AddEditStudentDialog(
     onDismiss: () -> Unit,
     onSave: (StudentEntity) -> Unit
 ) {
+    val context = LocalContext.current
     var studentCode by remember { mutableStateOf(student?.studentCode ?: "HCM-2025-${(100..999).random()}") }
     var name by remember { mutableStateOf(student?.name ?: "") }
     var gender by remember { mutableStateOf(student?.gender ?: "Male") }
@@ -614,10 +646,30 @@ fun AddEditStudentDialog(
     var stream by remember { mutableStateOf(student?.stream ?: if (SchoolPolicy.isHighSchool(gradeName)) "STEAMS-1" else "") }
     var className by remember { mutableStateOf(student?.className ?: "A") }
     var rollNumber by remember { mutableStateOf(student?.rollNumber?.toString() ?: "1") }
-    var parentName by remember { mutableStateOf(student?.parentName ?: "") }
+    var photoUrl by remember { mutableStateOf(student?.photoUrl ?: "") }
+    var studentNrc by remember { mutableStateOf(student?.studentNrc ?: "") }
+    var fatherName by remember { mutableStateOf(student?.fatherName ?: "") }
+    var fatherNrc by remember { mutableStateOf(student?.fatherNrc ?: "") }
+    var motherName by remember { mutableStateOf(student?.motherName ?: "") }
+    var motherNrc by remember { mutableStateOf(student?.motherNrc ?: "") }
     var phone by remember { mutableStateOf(student?.phone ?: "") }
     var address by remember { mutableStateOf(student?.address ?: "") }
     var status by remember { mutableStateOf(student?.status ?: "Active") }
+
+    val photoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val savedFileName = StudentPhotoUtils.savePhotoFromUri(context, uri)
+            if (savedFileName != null) {
+                photoUrl = savedFileName
+            }
+        }
+    }
+
+    val studentPhotoBitmap = remember(photoUrl) {
+        StudentPhotoUtils.loadStudentPhotoImageBitmap(context, photoUrl)
+    }
 
     var gradeExpanded by remember { mutableStateOf(false) }
     var streamExpanded by remember { mutableStateOf(false) }
@@ -632,6 +684,80 @@ fun AddEditStudentDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                // Photo Picker Section
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(76.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+                                .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), CircleShape)
+                                .clickable {
+                                    photoLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (studentPhotoBitmap != null) {
+                                Image(
+                                    bitmap = studentPhotoBitmap,
+                                    contentDescription = "Student Photo",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.AddAPhoto,
+                                        contentDescription = "Select Photo",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Text("Photo", fontSize = 9.5.sp, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    photoLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(if (photoUrl.isBlank()) "Choose Photo" else "Change Photo", fontSize = 11.sp)
+                            }
+                            if (photoUrl.isNotBlank()) {
+                                TextButton(
+                                    onClick = { photoUrl = "" },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("Remove", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 item {
                     OutlinedTextField(
                         value = studentCode,
@@ -645,7 +771,16 @@ fun AddEditStudentDialog(
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("Full Name *", fontSize = 12.sp) },
+                        label = { Text("Student Full Name *", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp)
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = studentNrc,
+                        onValueChange = { studentNrc = it },
+                        label = { Text("Student NRC (e.g. 12/KAMAYA(N)123456)", fontSize = 12.sp) },
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp)
                     )
@@ -769,14 +904,55 @@ fun AddEditStudentDialog(
                 }
 
                 item {
+                    Text(
+                        text = "Parents / Guardians Information",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                item {
                     OutlinedTextField(
-                        value = parentName,
-                        onValueChange = { parentName = it },
-                        label = { Text("Parent / Guardian Name", fontSize = 12.sp) },
+                        value = fatherName,
+                        onValueChange = { fatherName = it },
+                        label = { Text("Father's Name", fontSize = 12.sp) },
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp)
                     )
                 }
+
+                item {
+                    OutlinedTextField(
+                        value = fatherNrc,
+                        onValueChange = { fatherNrc = it },
+                        label = { Text("Father's NRC (e.g. 12/KAMAYA(N)123456)", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp)
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = motherName,
+                        onValueChange = { motherName = it },
+                        label = { Text("Mother's Name", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp)
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = motherNrc,
+                        onValueChange = { motherNrc = it },
+                        label = { Text("Mother's NRC (e.g. 12/KAMAYA(N)654321)", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp)
+                    )
+                }
+
                 item {
                     OutlinedTextField(
                         value = phone,
@@ -802,6 +978,12 @@ fun AddEditStudentDialog(
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
+                        val computedParentName = when {
+                            fatherName.isNotBlank() && motherName.isNotBlank() -> "$fatherName / $motherName"
+                            fatherName.isNotBlank() -> fatherName
+                            motherName.isNotBlank() -> motherName
+                            else -> student?.parentName ?: ""
+                        }
                         onSave(
                             StudentEntity(
                                 id = student?.id ?: 0L,
@@ -812,11 +994,22 @@ fun AddEditStudentDialog(
                                 gradeName = gradeName,
                                 className = className,
                                 rollNumber = rollNumber.toIntOrNull() ?: 1,
-                                parentName = parentName,
+                                parentName = computedParentName,
                                 phone = phone,
                                 address = address,
                                 status = status,
-                                stream = if (SchoolPolicy.isHighSchool(gradeName)) (if (stream.isNotBlank()) stream else "STEAMS-1") else ""
+                                photoAvatarIndex = student?.photoAvatarIndex ?: 0,
+                                stream = if (SchoolPolicy.isHighSchool(gradeName)) (if (stream.isNotBlank()) stream else "STEAMS-1") else "",
+                                photoUrl = photoUrl,
+                                studentNrc = studentNrc,
+                                fatherName = fatherName,
+                                fatherNrc = fatherNrc,
+                                motherName = motherName,
+                                motherNrc = motherNrc,
+                                uuid = student?.uuid ?: java.util.UUID.randomUUID().toString(),
+                                createdAt = student?.createdAt ?: System.currentTimeMillis(),
+                                updatedAt = System.currentTimeMillis(),
+                                isDirty = true
                             )
                         )
                     }
@@ -861,22 +1054,36 @@ fun StudentDetailDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    val detailContext = LocalContext.current
+                    val detailPhotoBitmap = remember(student.photoUrl) {
+                        StudentPhotoUtils.loadStudentPhotoImageBitmap(detailContext, student.photoUrl)
+                    }
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(
                                 if (student.gender == "Male") MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.secondaryContainer
-                            ),
+                            )
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (student.gender == "Male") Icons.Default.Face else Icons.Default.Face3,
-                            contentDescription = null,
-                            tint = if (student.gender == "Male") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        if (detailPhotoBitmap != null) {
+                            Image(
+                                bitmap = detailPhotoBitmap,
+                                contentDescription = "Photo of ${student.name}",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (student.gender == "Male") Icons.Default.Face else Icons.Default.Face3,
+                                contentDescription = null,
+                                tint = if (student.gender == "Male") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
 
                     Column {
@@ -941,6 +1148,11 @@ fun StudentDetailDialog(
 
 @Composable
 fun ProfileAndParentTab(student: StudentEntity) {
+    val context = LocalContext.current
+    val photoBitmap = remember(student.photoUrl) {
+        StudentPhotoUtils.loadStudentPhotoImageBitmap(context, student.photoUrl)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -948,15 +1160,48 @@ fun ProfileAndParentTab(student: StudentEntity) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         DetailSectionCard(title = "Student Profile") {
+            if (photoBitmap != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                    ) {
+                        Image(
+                            bitmap = photoBitmap,
+                            contentDescription = "Photo of ${student.name}",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+            }
             DetailRow("Student ID / Code", student.studentCode)
             DetailRow("Full Name", student.name)
+            DetailRow("Student NRC", student.studentNrc.ifBlank { "N/A" })
             DetailRow("Gender", student.gender)
             DetailRow("Date of Birth", student.dateOfBirth)
             DetailRow("Status", student.status)
         }
 
         DetailSectionCard(title = "Parent / Guardian Information") {
-            DetailRow("Parent / Guardian", student.parentName.ifBlank { "N/A" })
+            if (student.fatherName.isNotBlank() || student.fatherNrc.isNotBlank()) {
+                DetailRow("Father's Name", student.fatherName.ifBlank { "N/A" })
+                DetailRow("Father's NRC", student.fatherNrc.ifBlank { "N/A" })
+            }
+            if (student.motherName.isNotBlank() || student.motherNrc.isNotBlank()) {
+                DetailRow("Mother's Name", student.motherName.ifBlank { "N/A" })
+                DetailRow("Mother's NRC", student.motherNrc.ifBlank { "N/A" })
+            }
+            if (student.fatherName.isBlank() && student.motherName.isBlank()) {
+                DetailRow("Parent / Guardian", student.parentName.ifBlank { "N/A" })
+            }
             DetailRow("Contact Phone", student.phone.ifBlank { "N/A" })
             DetailRow("Residential Address", student.address.ifBlank { "N/A" })
         }

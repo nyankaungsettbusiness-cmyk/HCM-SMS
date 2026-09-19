@@ -43,7 +43,7 @@ interface StudentDao {
     @Query("SELECT * FROM students WHERE isDeleted = 0 AND gradeName = :gradeName AND className = :className ORDER BY rollNumber ASC")
     fun getStudentsByGradeAndClass(gradeName: String, className: String): Flow<List<StudentEntity>>
 
-    @Query("SELECT * FROM students WHERE isDeleted = 0 AND (name LIKE '%' || :query || '%' OR studentCode LIKE '%' || :query || '%' OR parentName LIKE '%' || :query || '%')")
+    @Query("SELECT * FROM students WHERE isDeleted = 0 AND (name LIKE '%' || :query || '%' OR studentCode LIKE '%' || :query || '%' OR parentName LIKE '%' || :query || '%' OR studentNrc LIKE '%' || :query || '%' OR fatherName LIKE '%' || :query || '%' OR motherName LIKE '%' || :query || '%')")
     fun searchStudents(query: String): Flow<List<StudentEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

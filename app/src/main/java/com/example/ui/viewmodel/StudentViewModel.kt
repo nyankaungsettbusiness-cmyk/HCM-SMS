@@ -89,7 +89,10 @@ class StudentViewModel(
             val matchesQuery = criteria.query.isEmpty() ||
                     student.name.contains(criteria.query, ignoreCase = true) ||
                     student.studentCode.contains(criteria.query, ignoreCase = true) ||
-                    student.parentName.contains(criteria.query, ignoreCase = true)
+                    student.studentNrc.contains(criteria.query, ignoreCase = true) ||
+                    student.parentName.contains(criteria.query, ignoreCase = true) ||
+                    student.fatherName.contains(criteria.query, ignoreCase = true) ||
+                    student.motherName.contains(criteria.query, ignoreCase = true)
 
             val matchesGrade = criteria.grade == "All" || student.gradeName.equals(criteria.grade, ignoreCase = true)
             val matchesClass = criteria.clazz == "All" || student.className.equals(criteria.clazz, ignoreCase = true)
@@ -176,10 +179,10 @@ class StudentViewModel(
     fun importMockData() {
         viewModelScope.launch {
             val mockList = listOf(
-                StudentEntity(studentCode = "HCM-2025-101", name = "Min Khant Zaw", gender = "Male", dateOfBirth = "2014-03-25", gradeName = "G6", className = "A", rollNumber = 10, parentName = "U Zaw Zaw", phone = "09780001111", address = "Kamayut, Yangon", status = "Active", photoAvatarIndex = 1),
-                StudentEntity(studentCode = "HCM-2025-102", name = "Pyae Sone Aung", gender = "Male", dateOfBirth = "2013-07-14", gradeName = "G7", className = "B", rollNumber = 4, parentName = "U Aung Than", phone = "09780002222", address = "Hledan, Yangon", status = "Active", photoAvatarIndex = 2),
-                StudentEntity(studentCode = "HCM-2025-103", name = "Hnin Nandar Shwe", gender = "Female", dateOfBirth = "2011-02-18", gradeName = "G9", className = "A", rollNumber = 2, parentName = "Daw Shwe Shwe", phone = "09780003333", address = "Sanchaung, Yangon", status = "Active", photoAvatarIndex = 3),
-                StudentEntity(studentCode = "HCM-2025-104", name = "Zin Lin Htet", gender = "Male", dateOfBirth = "2009-12-01", gradeName = "G11", className = "A", rollNumber = 1, parentName = "U Htet Lin", phone = "09780004444", address = "Bahan, Yangon", status = "Active", photoAvatarIndex = 4)
+                StudentEntity(studentCode = "HCM-2025-101", name = "Min Khant Zaw", gender = "Male", dateOfBirth = "2014-03-25", gradeName = "G6", className = "A", rollNumber = 10, parentName = "U Zaw Zaw / Daw Khin Myo", fatherName = "U Zaw Zaw", fatherNrc = "12/KAMAYA(N)112233", motherName = "Daw Khin Myo", motherNrc = "12/KAMAYA(N)445566", studentNrc = "", phone = "09780001111", address = "Kamayut, Yangon", status = "Active", photoAvatarIndex = 1),
+                StudentEntity(studentCode = "HCM-2025-102", name = "Pyae Sone Aung", gender = "Male", dateOfBirth = "2013-07-14", gradeName = "G7", className = "B", rollNumber = 4, parentName = "U Aung Than / Daw Nilar", fatherName = "U Aung Than", fatherNrc = "12/HLEDA(N)223344", motherName = "Daw Nilar", motherNrc = "12/HLEDA(N)556677", studentNrc = "", phone = "09780002222", address = "Hledan, Yangon", status = "Active", photoAvatarIndex = 2),
+                StudentEntity(studentCode = "HCM-2025-103", name = "Hnin Nandar Shwe", gender = "Female", dateOfBirth = "2011-02-18", gradeName = "G9", className = "A", rollNumber = 2, parentName = "U Kyaw Shwe / Daw Shwe Shwe", fatherName = "U Kyaw Shwe", fatherNrc = "12/SAKANA(N)334455", motherName = "Daw Shwe Shwe", motherNrc = "12/SAKANA(N)667788", studentNrc = "", phone = "09780003333", address = "Sanchaung, Yangon", status = "Active", photoAvatarIndex = 3),
+                StudentEntity(studentCode = "HCM-2025-104", name = "Zin Lin Htet", gender = "Male", dateOfBirth = "2009-12-01", gradeName = "G11", className = "A", rollNumber = 1, parentName = "U Htet Lin / Daw Aye Aye", fatherName = "U Htet Lin", fatherNrc = "12/BAHANA(N)445566", motherName = "Daw Aye Aye", motherNrc = "12/BAHANA(N)778899", studentNrc = "12/BAHANA(N)998877", phone = "09780004444", address = "Bahan, Yangon", status = "Active", photoAvatarIndex = 4)
             )
             repository.importMockStudents(mockList)
         }

@@ -24,6 +24,12 @@ data class StudentSupabaseDto(
     val status: String = "Active",
     @SerialName("photo_avatar_index") val photoAvatarIndex: Int = 0,
     val stream: String = "",
+    @SerialName("photo_url") val photoUrl: String = "",
+    @SerialName("student_nrc") val studentNrc: String = "",
+    @SerialName("father_name") val fatherName: String = "",
+    @SerialName("father_nrc") val fatherNrc: String = "",
+    @SerialName("mother_name") val motherName: String = "",
+    @SerialName("mother_nrc") val motherNrc: String = "",
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("is_deleted") val isDeleted: Boolean = false
@@ -33,6 +39,14 @@ data class StudentSupabaseDto(
         val parsedCreatedAt = parseIsoToMillis(createdAt)
         val effectiveCode = studentId.ifBlank { admissionNo ?: "" }
         val effectiveDob = dateOfBirth.ifBlank { dob ?: "" }
+        val effectiveParentName = parentName.ifBlank {
+            when {
+                fatherName.isNotBlank() && motherName.isNotBlank() -> "$fatherName / $motherName"
+                fatherName.isNotBlank() -> fatherName
+                motherName.isNotBlank() -> motherName
+                else -> ""
+            }
+        }
         return StudentEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             studentCode = effectiveCode,
@@ -42,12 +56,18 @@ data class StudentSupabaseDto(
             gradeName = grade,
             className = className,
             rollNumber = existingRollNumber,
-            parentName = parentName,
+            parentName = effectiveParentName,
             phone = parentPhone,
             address = address,
             status = status,
             photoAvatarIndex = photoAvatarIndex,
             stream = stream,
+            photoUrl = photoUrl,
+            studentNrc = studentNrc,
+            fatherName = fatherName,
+            fatherNrc = fatherNrc,
+            motherName = motherName,
+            motherNrc = motherNrc,
             uuid = uuid.ifBlank { UUID.randomUUID().toString() },
             createdAt = if (parsedCreatedAt > 0) parsedCreatedAt else System.currentTimeMillis(),
             updatedAt = if (parsedUpdatedAt > 0) parsedUpdatedAt else System.currentTimeMillis(),
@@ -61,6 +81,14 @@ data class StudentSupabaseDto(
             val validUuid = entity.uuid.ifBlank { UUID.randomUUID().toString() }
             val effectiveCode = entity.studentCode.ifBlank { "STU-${entity.id}" }
             val effectiveDob = entity.dateOfBirth.ifBlank { "2015-01-01" }
+            val effectiveParentName = entity.parentName.ifBlank {
+                when {
+                    entity.fatherName.isNotBlank() && entity.motherName.isNotBlank() -> "${entity.fatherName} / ${entity.motherName}"
+                    entity.fatherName.isNotBlank() -> entity.fatherName
+                    entity.motherName.isNotBlank() -> entity.motherName
+                    else -> ""
+                }
+            }
             return StudentSupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
@@ -72,12 +100,18 @@ data class StudentSupabaseDto(
                 gender = entity.gender.ifBlank { "Male" },
                 dob = effectiveDob,
                 dateOfBirth = effectiveDob,
-                parentName = entity.parentName,
+                parentName = effectiveParentName,
                 parentPhone = entity.phone,
                 address = entity.address,
                 status = entity.status,
                 photoAvatarIndex = entity.photoAvatarIndex,
                 stream = entity.stream,
+                photoUrl = entity.photoUrl,
+                studentNrc = entity.studentNrc,
+                fatherName = entity.fatherName,
+                fatherNrc = entity.fatherNrc,
+                motherName = entity.motherName,
+                motherNrc = entity.motherNrc,
                 createdAt = millisToIso(entity.createdAt),
                 updatedAt = millisToIso(entity.updatedAt),
                 isDeleted = entity.isDeleted

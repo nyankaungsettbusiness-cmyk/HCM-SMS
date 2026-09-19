@@ -76,7 +76,7 @@ import kotlinx.coroutines.launch
         SyncOutboxEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -310,6 +310,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE students ADD COLUMN photoUrl TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE students ADD COLUMN studentNrc TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE students ADD COLUMN fatherName TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE students ADD COLUMN fatherNrc TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE students ADD COLUMN motherName TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE students ADD COLUMN motherNrc TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -317,7 +328,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "hcm_sms_database.db"
                 )
-                    .addMigrations(MIGRATION_15_16, MIGRATION_17_18, MIGRATION_19_20)
+                    .addMigrations(MIGRATION_15_16, MIGRATION_17_18, MIGRATION_19_20, MIGRATION_20_21)
                     .addCallback(DatabaseCallback(context.applicationContext))
                     .fallbackToDestructiveMigration()
                     .build()
