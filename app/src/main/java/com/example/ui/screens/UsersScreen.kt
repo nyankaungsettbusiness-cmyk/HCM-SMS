@@ -52,7 +52,6 @@ fun UsersScreen(
     val rolePermissions by authViewModel.rolePermissions.collectAsState()
     val loginHistory by authViewModel.loginHistory.collectAsState()
     val securityPolicy by authViewModel.securityPolicy.collectAsState()
-    val auditLogs by authViewModel.auditLogs.collectAsState()
 
     val isAuthorized = currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.role == UserRole.ADMIN
     if (!isAuthorized) {
@@ -367,7 +366,7 @@ fun UsersScreen(
             Tab(
                 selected = selectedTabIndex == 2,
                 onClick = { selectedTabIndex = 2 },
-                text = { Text("History", fontSize = 11.5.sp, maxLines = 1) },
+                text = { Text("Login History", fontSize = 11.5.sp, maxLines = 1) },
                 icon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp)) }
             )
             Tab(
@@ -400,8 +399,7 @@ fun UsersScreen(
                     rolePermissions = rolePermissions
                 )
                 2 -> LoginHistoryTabContent(
-                    loginHistory = loginHistory,
-                    auditLogs = auditLogs
+                    loginHistory = loginHistory
                 )
                 3 -> SecurityPolicyTabContent(
                     securityPolicy = securityPolicy,
@@ -2387,10 +2385,8 @@ private fun RolePermissionsTabContent(
 
 @Composable
 private fun LoginHistoryTabContent(
-    loginHistory: List<LoginHistoryEntity>,
-    auditLogs: List<AuditLogEntity>
+    loginHistory: List<LoginHistoryEntity>
 ) {
-    var subTab by remember { mutableIntStateOf(0) }
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
 
     Column(
@@ -2399,108 +2395,77 @@ private fun LoginHistoryTabContent(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            FilterChip(
-                selected = subTab == 0,
-                onClick = { subTab = 0 },
-                label = { Text("Logins (${loginHistory.size})", fontSize = 11.sp) },
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.height(30.dp)
-            )
-            FilterChip(
-                selected = subTab == 1,
-                onClick = { subTab = 1 },
-                label = { Text("Audit Logs (${auditLogs.size})", fontSize = 11.sp) },
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.height(30.dp)
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Total Login Sessions: ${loginHistory.size}",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "System audit logs managed in Settings",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+            }
         }
 
-        if (subTab == 0) {
-            if (loginHistory.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No login history records found.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(bottom = 20.dp)
-                ) {
-                    items(loginHistory, key = { it.id }) { log ->
-                        val isSuccess = log.status == "SUCCESS"
-                        val isLogout = log.status == "LOGOUT"
-                        val badgeColor = if (isSuccess) Color(0xFF2E7D32) else if (isLogout) MaterialTheme.colorScheme.primary else Color(0xFFD32F2F)
-
-                        Card(
-                            shape = RoundedCornerShape(6.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                    Text("${log.displayName} (@${log.username})", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                    Text("IP: ${log.ipAddress} • ${dateFormat.format(Date(log.loginTime))}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    if (log.failureReason.isNotBlank()) {
-                                        Text(log.failureReason, fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
-                                    }
-                                }
-
-                                Surface(
-                                    color = badgeColor.copy(alpha = 0.12f),
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        text = log.status,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = badgeColor,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+        if (loginHistory.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No login history records found.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            if (auditLogs.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No audit log records recorded yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(bottom = 20.dp)
-                ) {
-                    items(auditLogs, key = { it.id }) { log ->
-                        Card(
-                            shape = RoundedCornerShape(6.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-                            modifier = Modifier.fillMaxWidth()
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(bottom = 20.dp)
+            ) {
+                items(loginHistory, key = { it.id }) { log ->
+                    val isSuccess = log.status == "SUCCESS"
+                    val isLogout = log.status == "LOGOUT"
+                    val badgeColor = if (isSuccess) Color(0xFF2E7D32) else if (isLogout) MaterialTheme.colorScheme.primary else Color(0xFFD32F2F)
+
+                    Card(
+                        shape = RoundedCornerShape(6.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(log.action, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-                                    Text(dateFormat.format(Date(log.timestamp)), fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text("${log.displayName} (@${log.username})", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("IP: ${log.ipAddress} • ${dateFormat.format(Date(log.loginTime))}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (log.failureReason.isNotBlank()) {
+                                    Text(log.failureReason, fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
                                 }
-                                Text("User: ${log.userName} (${log.roleName})", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                Text(log.details, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+
+                            Surface(
+                                color = badgeColor.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = log.status,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = badgeColor,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
                             }
                         }
                     }

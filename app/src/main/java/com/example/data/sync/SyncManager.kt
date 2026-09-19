@@ -585,22 +585,26 @@ object SyncManager {
     fun schedulePeriodicSync(context: Context? = null, intervalMinutes: Long = 240) {
         val ctx = context?.applicationContext ?: appContext ?: return
         appContext = ctx
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .setRequiresBatteryNotLow(true)
-            .build()
+        try {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiresBatteryNotLow(true)
+                .build()
 
-        val syncWorkRequest = PeriodicWorkRequestBuilder<SyncWorker>(
-            intervalMinutes, TimeUnit.MINUTES
-        )
-            .setConstraints(constraints)
-            .build()
+            val syncWorkRequest = PeriodicWorkRequestBuilder<SyncWorker>(
+                intervalMinutes, TimeUnit.MINUTES
+            )
+                .setConstraints(constraints)
+                .build()
 
-        WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
-            SyncWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
-            syncWorkRequest
-        )
+            WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
+                SyncWorker.WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,
+                syncWorkRequest
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to schedule periodic sync with WorkManager: ${e.message}", e)
+        }
     }
 
     suspend fun runDiagnosticAudit(context: Context? = null): SyncDiagnosticReport? {

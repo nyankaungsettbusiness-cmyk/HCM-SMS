@@ -30,6 +30,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.UserEntity
 
+import androidx.compose.runtime.*
+import androidx.compose.foundation.clickable
+import com.example.data.local.entity.UserRole
+
 sealed class ScreenRoute(val route: String, val title: String, val icon: ImageVector) {
     object Dashboard : ScreenRoute("dashboard", "Dashboard & Analytics", Icons.Default.Dashboard)
     object Students : ScreenRoute("students", "Students", Icons.Default.People)
@@ -55,7 +59,9 @@ fun AppNavigationDrawerContent(
     schoolName: String,
     schoolLogoUri: String? = null,
     onNavigate: (String) -> Unit,
-    onCloseDrawer: () -> Unit
+    onCloseDrawer: () -> Unit,
+    onLogoutClicked: () -> Unit = {},
+    onRoleSwitchClicked: (UserRole) -> Unit = {}
 ) {
     ModalDrawerSheet(
         drawerContainerColor = MaterialTheme.colorScheme.surface,
@@ -134,6 +140,8 @@ fun AppNavigationDrawerContent(
                         }
                     }
 
+                    var userMenuExpanded by remember { mutableStateOf(false) }
+
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
@@ -141,26 +149,126 @@ fun AppNavigationDrawerContent(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { userMenuExpanded = true }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Column {
-                                Text(
-                                    text = currentUser?.fullName ?: "Guest",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = currentUser?.role?.displayName ?: "",
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.secondaryContainer
-                                )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                // User Icon Avatar Badge
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.tertiary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = currentUser?.fullName?.take(1) ?: "U",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = currentUser?.fullName ?: "Guest",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = currentUser?.role?.displayName ?: "",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                }
+                            }
+
+                            Box {
+                                IconButton(
+                                    onClick = { userMenuExpanded = true },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "User Options",
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                DropdownMenu(
+                                    expanded = userMenuExpanded,
+                                    onDismissRequest = { userMenuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(
+                                                    text = currentUser?.fullName ?: "Guest",
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = currentUser?.role?.displayName ?: "",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        },
+                                        onClick = {},
+                                        leadingIcon = {
+                                            Icon(Icons.Default.AccountCircle, contentDescription = null)
+                                        }
+                                    )
+
+                                    if (currentUser?.role == UserRole.SUPER_ADMIN) {
+                                        HorizontalDivider()
+
+                                        Text(
+                                            text = " Switch Demo Role:",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.Gray,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        )
+
+                                        UserRole.values().forEach { role ->
+                                            DropdownMenuItem(
+                                                text = { Text(role.displayName) },
+                                                onClick = {
+                                                    onRoleSwitchClicked(role)
+                                                    userMenuExpanded = false
+                                                },
+                                                leadingIcon = {
+                                                    if (currentUser?.role == role) {
+                                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+                                                    } else {
+                                                        Icon(Icons.Default.Badge, contentDescription = null)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+
+                                    HorizontalDivider()
+
+                                    DropdownMenuItem(
+                                        text = { Text("Logout", color = MaterialTheme.colorScheme.error) },
+                                        onClick = {
+                                            userMenuExpanded = false
+                                            onCloseDrawer()
+                                            onLogoutClicked()
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.ExitToApp, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }

@@ -329,7 +329,9 @@ fun HcmMainApp(
                     },
                     onCloseDrawer = {
                         scope.launch { drawerState.close() }
-                    }
+                    },
+                    onLogoutClicked = { authViewModel.logout(context) },
+                    onRoleSwitchClicked = { role -> authViewModel.loginAsRole(role) }
                 )
             }
         ) {

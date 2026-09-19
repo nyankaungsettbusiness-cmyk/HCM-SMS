@@ -80,8 +80,7 @@ fun SchoolPolicyCenterScreen(
     val tabTitles = listOf(
         "Grades & Classes",
         "Subjects",
-        "Grading Policy",
-        "Role Permissions"
+        "Grading Policy"
     )
 
     Column(
@@ -146,7 +145,6 @@ fun SchoolPolicyCenterScreen(
                 0 -> GradeConfigTab(policyViewModel)
                 1 -> SubjectConfigTab(policyViewModel)
                 2 -> GradingPolicyTab(policyViewModel)
-                3 -> PermissionConfigTab(authViewModel)
             }
         }
     }
@@ -170,13 +168,14 @@ fun GradeConfigTab(viewModel: SchoolPolicyViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text("Grade & Class Structure", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Text("Manage KG, Primary (G1-G5), Secondary (G6-G9) & High School (G10-G12)", fontSize = 11.sp, color = Color.Gray)
             }
+            Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = { showAddGradeDialog = true },
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 shape = RoundedCornerShape(10.dp),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
             ) {
@@ -422,13 +421,14 @@ fun SubjectConfigTab(viewModel: SchoolPolicyViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text("Subject Management", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Text("Assigned Academic & Additional subjects (${filteredSubjects.size})", fontSize = 11.sp, color = Color.Gray)
             }
+            Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = { showAddSubjectDialog = true },
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 shape = RoundedCornerShape(10.dp),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
             ) {
@@ -1003,213 +1003,3 @@ fun GradingPolicyTab(viewModel: SchoolPolicyViewModel) {
     }
 }
 
-// -------------------------------------------------------------
-// 4. Permission Configuration Tab
-// -------------------------------------------------------------
-@Composable
-fun PermissionConfigTab(authViewModel: AuthViewModel) {
-    val permissions by authViewModel.rolePermissions.collectAsState()
-    var selectedRole by remember { mutableStateOf(UserRole.ADMIN) }
-    var searchQuery by remember { mutableStateOf("") }
-
-    val rolePermissionsFiltered = permissions.filter { it.role == selectedRole }
-        .filter { searchQuery.isBlank() || it.permissionKey.contains(searchQuery, ignoreCase = true) }
-
-    val isSuperAdmin = selectedRole == UserRole.SUPER_ADMIN
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // Header with quick actions
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text("Role & Permission Access Control", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text(
-                    if (isSuperAdmin) "Super Admin has unrestricted master access to all operations"
-                    else "Configure specific permission grants for ${selectedRole.displayName}",
-                    fontSize = 11.sp,
-                    color = Color.Gray
-                )
-            }
-
-            if (!isSuperAdmin) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedButton(
-                        onClick = {
-                            rolePermissionsFiltered.forEach { perm ->
-                                if (!perm.isAllowed) {
-                                    authViewModel.updatePermission(perm.copy(isAllowed = true))
-                                }
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(34.dp),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Grant All", fontSize = 11.sp)
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            rolePermissionsFiltered.forEach { perm ->
-                                if (perm.isAllowed) {
-                                    authViewModel.updatePermission(perm.copy(isAllowed = false))
-                                }
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(34.dp),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(Icons.Default.RemoveDone, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Revoke All", fontSize = 11.sp)
-                    }
-                }
-            }
-        }
-
-        // Role Filter Chips Row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            UserRole.values().forEach { role ->
-                val isSelected = selectedRole == role
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { selectedRole = role },
-                    label = { Text(role.displayName, fontSize = 11.5.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.height(34.dp)
-                )
-            }
-        }
-
-        // Quick Search within Permissions
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("Filter permissions by key (e.g. STUDENTS, ATTENDANCE)...", fontSize = 12.sp) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(16.dp))
-                    }
-                }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.fillMaxWidth().height(48.dp)
-        )
-
-        if (isSuperAdmin) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        Icons.Default.VerifiedUser,
-                        contentDescription = null,
-                        modifier = Modifier.size(32.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Column {
-                        Text("Super Admin Master Permissions", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text(
-                            "Super Administrator bypasses permission checks and has full system privileges across all modules and functions.",
-                            fontSize = 11.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-
-        // Permissions List with full-row clickability and convenient touch targets
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            contentPadding = PaddingValues(bottom = 16.dp)
-        ) {
-            items(rolePermissionsFiltered, key = { "${it.role}_${it.permissionKey}" }) { perm ->
-                Card(
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (perm.isAllowed) MaterialTheme.colorScheme.surface
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                    ),
-                    border = BorderStroke(
-                        0.5.dp,
-                        if (perm.isAllowed) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = !isSuperAdmin) {
-                            authViewModel.updatePermission(perm.copy(isAllowed = !perm.isAllowed))
-                        }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (perm.isAllowed) Color(0xFF2E7D32) else Color.Gray.copy(alpha = 0.5f))
-                            )
-                            Column {
-                                Text(
-                                    text = perm.permissionKey,
-                                    fontWeight = if (perm.isAllowed) FontWeight.SemiBold else FontWeight.Normal,
-                                    fontSize = 12.5.sp,
-                                    color = if (perm.isAllowed) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = if (perm.isAllowed) "Granted" else "Denied",
-                                    fontSize = 10.sp,
-                                    color = if (perm.isAllowed) Color(0xFF2E7D32) else Color.Gray
-                                )
-                            }
-                        }
-
-                        Switch(
-                            checked = if (isSuperAdmin) true else perm.isAllowed,
-                            onCheckedChange = { allowed ->
-                                authViewModel.updatePermission(perm.copy(isAllowed = allowed))
-                            },
-                            enabled = !isSuperAdmin,
-                            modifier = Modifier.scale(0.85f)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}

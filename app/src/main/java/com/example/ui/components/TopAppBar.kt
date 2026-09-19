@@ -37,11 +37,10 @@ fun HcmTopAppBar(
     schoolLogoUri: String? = null,
     onOpenDrawer: () -> Unit,
     onAcademicYearChanged: (String) -> Unit,
-    onLogoutClicked: () -> Unit,
-    onRoleSwitchClicked: (UserRole) -> Unit
+    onLogoutClicked: () -> Unit = {},
+    onRoleSwitchClicked: (UserRole) -> Unit = {}
 ) {
     var yearMenuExpanded by remember { mutableStateOf(false) }
-    var roleMenuExpanded by remember { mutableStateOf(false) }
     var showConnectionDialog by remember { mutableStateOf(false) }
 
     val connectionMode by com.example.data.sync.SyncManager.connectionMode.collectAsState()
@@ -135,7 +134,7 @@ fun HcmTopAppBar(
                         // School Name & Subtitle hierarchy
                         Column(
                             verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.weight(1f, fill = false)
+                            modifier = Modifier.weight(1f, fill = true)
                         ) {
                             Text(
                                 text = schoolName.ifEmpty { "Hein Chan Myae" },
@@ -293,97 +292,6 @@ fun HcmTopAppBar(
                                     )
                                 }
                             }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(3.dp))
-
-                    // User Profile / Role Selector Dropdown
-                    Box {
-                        IconButton(
-                            onClick = { roleMenuExpanded = true },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.tertiary),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = currentUser?.fullName?.take(1) ?: "U",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-                        }
-
-                        DropdownMenu(
-                            expanded = roleMenuExpanded,
-                            onDismissRequest = { roleMenuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(
-                                            text = currentUser?.fullName ?: "Guest",
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = currentUser?.role?.displayName ?: "",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                },
-                                onClick = {},
-                                leadingIcon = {
-                                    Icon(Icons.Default.AccountCircle, contentDescription = null)
-                                }
-                            )
-
-                            if (currentUser?.role == UserRole.SUPER_ADMIN) {
-                                HorizontalDivider()
-
-                                Text(
-                                    text = " Switch Demo Role:",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.Gray,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
-
-                                UserRole.values().forEach { role ->
-                                    DropdownMenuItem(
-                                        text = { Text(role.displayName) },
-                                        onClick = {
-                                            onRoleSwitchClicked(role)
-                                            roleMenuExpanded = false
-                                        },
-                                        leadingIcon = {
-                                            if (currentUser?.role == role) {
-                                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-                                            } else {
-                                                Icon(Icons.Default.Badge, contentDescription = null)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-
-                            HorizontalDivider()
-
-                            DropdownMenuItem(
-                                text = { Text("Logout", color = MaterialTheme.colorScheme.error) },
-                                onClick = {
-                                    onLogoutClicked()
-                                    roleMenuExpanded = false
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.ExitToApp, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                                }
-                            )
                         }
                     }
                 }
