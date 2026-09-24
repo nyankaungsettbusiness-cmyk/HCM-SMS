@@ -143,6 +143,10 @@ class HolisticRepository(
         return holisticDao.getHolisticResultsForStudent(studentId, period, academicYear)
     }
 
+    fun getHolisticResultsForStudentAllPeriods(studentId: Long, academicYear: String): Flow<List<HolisticResultEntity>> {
+        return holisticDao.getHolisticResultsForStudentAllPeriods(studentId, academicYear)
+    }
+
     suspend fun saveHolisticResults(results: List<HolisticResultEntity>) {
         val dirty = results.map { it.copy(isDirty = true, updatedAt = System.currentTimeMillis()) }
         holisticDao.insertOrUpdateHolisticResults(dirty)
@@ -161,6 +165,10 @@ class HolisticRepository(
 
     fun getTeacherCommentForStudent(studentId: Long, period: String, academicYear: String): Flow<TeacherCommentEntity?> {
         return holisticDao.getTeacherCommentForStudent(studentId, period, academicYear)
+    }
+
+    fun getTeacherCommentsForStudent(studentId: Long, academicYear: String): Flow<List<TeacherCommentEntity>> {
+        return holisticDao.getTeacherCommentsForStudent(studentId, academicYear)
     }
 
     suspend fun saveTeacherComment(comment: TeacherCommentEntity) {

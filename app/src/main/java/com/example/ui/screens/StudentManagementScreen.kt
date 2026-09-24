@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,7 +36,14 @@ import com.example.data.local.entity.GradeEntity
 import com.example.data.local.entity.StudentEntity
 import com.example.data.local.entity.AttendanceRecordEntity
 import com.example.data.local.entity.AttendanceStatus
+import com.example.data.local.entity.HolisticResultEntity
+import com.example.data.local.entity.TeacherCommentEntity
+import com.example.data.local.entity.AssessmentResultSummaryEntity
+import com.example.data.local.entity.ReportGenerationHistoryEntity
 import com.example.data.repository.AttendanceRepository
+import com.example.data.repository.HolisticRepository
+import com.example.data.repository.MarksRepository
+import com.example.data.repository.ReportRepository
 import com.example.data.policy.SchoolPolicy
 import com.example.ui.util.StudentPhotoUtils
 
@@ -58,7 +66,10 @@ fun StudentManagementScreen(
     academicYear: String = "2026-2027",
     currentUser: com.example.data.local.entity.UserEntity? = null,
     deletionVerificationEvent: kotlinx.coroutines.flow.SharedFlow<com.example.data.sync.DeletionVerificationResult>? = null,
-    attendanceRepository: AttendanceRepository? = null
+    attendanceRepository: AttendanceRepository? = null,
+    holisticRepository: HolisticRepository? = null,
+    marksRepository: MarksRepository? = null,
+    reportRepository: ReportRepository? = null
 ) {
     val canDeleteStudent = currentUser?.role == com.example.data.local.entity.UserRole.SUPER_ADMIN ||
             currentUser?.role == com.example.data.local.entity.UserRole.ADMIN
@@ -358,6 +369,68 @@ fun StudentManagementScreen(
         }
     }
 
+    // Real Holistic records for the student currently being viewed
+    val studentHolisticResults by produceState<List<HolisticResultEntity>>(
+        initialValue = emptyList(),
+        key1 = studentToViewDetail?.id,
+        key2 = academicYear
+    ) {
+        val currentStudent = studentToViewDetail
+        if (currentStudent != null && holisticRepository != null) {
+            holisticRepository.getHolisticResultsForStudentAllPeriods(currentStudent.id, academicYear).collect {
+                value = it
+            }
+        } else {
+            value = emptyList()
+        }
+    }
+
+    // Real Teacher comments for the student currently being viewed
+    val studentTeacherComments by produceState<List<TeacherCommentEntity>>(
+        initialValue = emptyList(),
+        key1 = studentToViewDetail?.id,
+        key2 = academicYear
+    ) {
+        val currentStudent = studentToViewDetail
+        if (currentStudent != null && holisticRepository != null) {
+            holisticRepository.getTeacherCommentsForStudent(currentStudent.id, academicYear).collect {
+                value = it
+            }
+        } else {
+            value = emptyList()
+        }
+    }
+
+    // Real Assessment results for the student currently being viewed
+    val studentAssessmentResults by produceState<List<AssessmentResultSummaryEntity>>(
+        initialValue = emptyList(),
+        key1 = studentToViewDetail?.id
+    ) {
+        val currentStudent = studentToViewDetail
+        if (currentStudent != null && marksRepository != null) {
+            marksRepository.getAssessmentResultsForStudent(currentStudent.id).collect {
+                value = it
+            }
+        } else {
+            value = emptyList()
+        }
+    }
+
+    // Real Generated Report history for the student currently being viewed
+    val studentReportHistory by produceState<List<ReportGenerationHistoryEntity>>(
+        initialValue = emptyList(),
+        key1 = studentToViewDetail?.id
+    ) {
+        val currentStudent = studentToViewDetail
+        if (currentStudent != null && reportRepository != null) {
+            reportRepository.getGenerationHistoryForStudent(currentStudent.id).collect {
+                value = it
+            }
+        } else {
+            value = emptyList()
+        }
+    }
+
     // View Student Profile Detail Dialog
     studentToViewDetail?.let { student ->
         StudentDetailDialog(
@@ -365,6 +438,10 @@ fun StudentManagementScreen(
             academicYear = academicYear,
             canDelete = canDeleteStudent,
             attendanceRecords = studentAttendanceRecords,
+            holisticResults = studentHolisticResults,
+            teacherComments = studentTeacherComments,
+            assessmentResults = studentAssessmentResults,
+            reportHistory = studentReportHistory,
             onEdit = {
                 studentToEdit = student
                 studentToViewDetail = null
@@ -1055,6 +1132,10 @@ fun StudentDetailDialog(
     academicYear: String,
     canDelete: Boolean = true,
     attendanceRecords: List<AttendanceRecordEntity> = emptyList(),
+    holisticResults: List<HolisticResultEntity> = emptyList(),
+    teacherComments: List<TeacherCommentEntity> = emptyList(),
+    assessmentResults: List<AssessmentResultSummaryEntity> = emptyList(),
+    reportHistory: List<ReportGenerationHistoryEntity> = emptyList(),
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
@@ -1166,8 +1247,8 @@ fun StudentDetailDialog(
                         0 -> ProfileAndParentTab(student)
                         1 -> AcademicDataTab(student, academicYear)
                         2 -> AttendanceDataTab(student, academicYear, attendanceRecords)
-                        3 -> HcmHolisticTab(student)
-                        4 -> ReportInfoTab(student, academicYear)
+                        3 -> HcmHolisticTab(student, academicYear, holisticResults, teacherComments)
+                        4 -> ReportInfoTab(student, academicYear, assessmentResults, reportHistory)
                     }
                 }
             }
@@ -1435,7 +1516,12 @@ fun AttendanceStatBadge(label: String, value: String, color: Color) {
 }
 
 @Composable
-fun HcmHolisticTab(student: StudentEntity) {
+fun HcmHolisticTab(
+    student: StudentEntity,
+    academicYear: String,
+    holisticResults: List<HolisticResultEntity> = emptyList(),
+    teacherComments: List<TeacherCommentEntity> = emptyList()
+) {
     val level = when (student.gradeName) {
         "KG" -> "Kindergarten"
         "G1", "G2", "G3", "G4", "G5" -> "Primary Level"
@@ -1449,23 +1535,79 @@ fun HcmHolisticTab(student: StudentEntity) {
             .padding(top = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        DetailSectionCard(title = "HCM Holistic Assessment ($level)") {
-            PillarRatingRow("1. Moral & Ethics (ဗလ ၅ တန်)", 5)
-            PillarRatingRow("2. Intellectual Growth", 4)
-            PillarRatingRow("3. Physical Development", 5)
-            PillarRatingRow("4. Social & Leadership", 4)
-            PillarRatingRow("5. Aesthetics & Culture", 5)
-        }
+        if (holisticResults.isEmpty() && teacherComments.isEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Text(
+                        text = "No Holistic Assessment Recorded",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "No holistic evaluation ($level) has been assigned or recorded for this student in $academicYear yet.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            val groupedByPeriod = holisticResults.groupBy { it.assessmentPeriod }
+            groupedByPeriod.forEach { (period, results) ->
+                DetailSectionCard(title = "HCM Holistic Assessment - $period ($level)") {
+                    results.forEach { result ->
+                        PillarRatingRow(
+                            pillarName = result.categoryName.ifBlank { result.pillar },
+                            stars = result.ratingStars,
+                            maxStars = result.maxStars
+                        )
+                    }
+                }
+            }
 
-        DetailSectionCard(title = "Teacher Overall Evaluation") {
-            DetailRow("Conduct Grade", "A (Excellent)")
-            DetailRow("General Remarks", "Demonstrates strong leadership, positive behavior, and active engagement.")
+            if (teacherComments.isNotEmpty()) {
+                teacherComments.forEach { comment ->
+                    DetailSectionCard(title = "Teacher Evaluation (${comment.assessmentPeriod})") {
+                        if (comment.generalComment.isNotBlank()) {
+                            DetailRow("General Remarks", comment.generalComment)
+                        }
+                        if (comment.positiveComments.isNotBlank()) {
+                            DetailRow("Strengths", comment.positiveComments)
+                        }
+                        if (comment.areasForImprovement.isNotBlank()) {
+                            DetailRow("Areas to Improve", comment.areasForImprovement)
+                        }
+                        if (comment.futureRecommendation.isNotBlank()) {
+                            DetailRow("Recommendations", comment.futureRecommendation)
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-fun PillarRatingRow(pillarName: String, stars: Int) {
+fun PillarRatingRow(pillarName: String, stars: Int, maxStars: Int = 5) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1473,7 +1615,7 @@ fun PillarRatingRow(pillarName: String, stars: Int) {
     ) {
         Text(pillarName, fontSize = 11.sp, modifier = Modifier.weight(1f))
         Row {
-            repeat(5) { index ->
+            repeat(maxStars.coerceAtLeast(1)) { index ->
                 Icon(
                     imageVector = if (index < stars) Icons.Default.Star else Icons.Default.StarOutline,
                     contentDescription = null,
@@ -1486,35 +1628,80 @@ fun PillarRatingRow(pillarName: String, stars: Int) {
 }
 
 @Composable
-fun ReportInfoTab(student: StudentEntity, academicYear: String) {
+fun ReportInfoTab(
+    student: StudentEntity,
+    academicYear: String,
+    assessmentResults: List<AssessmentResultSummaryEntity> = emptyList(),
+    reportHistory: List<ReportGenerationHistoryEntity> = emptyList()
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        DetailSectionCard(title = "Report Card Status ($academicYear)") {
-            DetailRow("Monthly Tests Status", "Completed & Verified")
-            DetailRow("Assessment Standing", "PASS (Overall Marks: 485/600)")
-            DetailRow("Class Rank", "#${student.rollNumber}")
-            DetailRow("Report Card Generation", "Ready for PDF Export")
-        }
-
-        DetailSectionCard(title = "PDF & Document Actions") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        if (assessmentResults.isEmpty() && reportHistory.isEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
             ) {
-                Text("Generate Student Report Card PDF", fontSize = 11.sp)
-                OutlinedButton(
-                    onClick = { },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(12.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Export Card", fontSize = 10.sp)
+                    Icon(
+                        imageVector = Icons.Default.Assessment,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Text(
+                        text = "No Assessment or Report Records",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "No exam marks, assessment summaries, or generated report cards exist for this student in $academicYear yet.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            if (assessmentResults.isNotEmpty()) {
+                DetailSectionCard(title = "Assessment Results ($academicYear)") {
+                    assessmentResults.forEachIndexed { idx, result ->
+                        DetailRow("Total Obtained", "${result.totalObtained.toInt()} / ${result.totalMax}")
+                        DetailRow("Percentage", String.format(java.util.Locale.US, "%.1f%%", result.percentage))
+                        DetailRow("Standing", result.overallResult)
+                        if (idx < assessmentResults.size - 1) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (reportHistory.isNotEmpty()) {
+                DetailSectionCard(title = "Generated Report Cards") {
+                    reportHistory.forEach { history ->
+                        val dateStr = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.US)
+                            .format(java.util.Date(history.generatedAtTimestamp))
+                        DetailRow(
+                            label = "${history.assessmentPeriodName} (${history.academicYear})",
+                            value = "${history.status} • $dateStr"
+                        )
+                    }
                 }
             }
         }

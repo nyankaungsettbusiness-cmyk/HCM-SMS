@@ -74,6 +74,14 @@ class MarksRepository(
         return marksDao.getResultSummaries(assessmentId)
     }
 
+    fun getAssessmentResultsForStudent(studentId: Long): Flow<List<AssessmentResultSummaryEntity>> {
+        return marksDao.getAssessmentResultsForStudent(studentId)
+    }
+
+    fun getMarksForStudent(studentId: Long): Flow<List<StudentMarkEntity>> {
+        return marksDao.getMarksForStudent(studentId)
+    }
+
     suspend fun saveResultSummary(summary: AssessmentResultSummaryEntity) {
         val dirtySummary = summary.copy(isDirty = true, updatedAt = System.currentTimeMillis())
         marksDao.insertOrUpdateResultSummary(dirtySummary)

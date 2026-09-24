@@ -50,6 +50,9 @@ interface HolisticDao {
     @Query("SELECT * FROM holistic_results WHERE studentId = :studentId AND assessmentPeriod = :period AND academicYear = :academicYear")
     fun getHolisticResultsForStudent(studentId: Long, period: String, academicYear: String): Flow<List<HolisticResultEntity>>
 
+    @Query("SELECT * FROM holistic_results WHERE studentId = :studentId AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear)")
+    fun getHolisticResultsForStudentAllPeriods(studentId: Long, academicYear: String): Flow<List<HolisticResultEntity>>
+
     @Query("SELECT * FROM holistic_results WHERE isDirty = 1 LIMIT :limit")
     suspend fun getHolisticResultsForSync(limit: Int = 300): List<HolisticResultEntity>
 
@@ -127,6 +130,9 @@ interface HolisticDao {
 
     @Query("SELECT * FROM teacher_comments WHERE studentId = :studentId AND assessmentPeriod = :period AND academicYear = :academicYear LIMIT 1")
     fun getTeacherCommentForStudent(studentId: Long, period: String, academicYear: String): Flow<TeacherCommentEntity?>
+
+    @Query("SELECT * FROM teacher_comments WHERE studentId = :studentId AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear) ORDER BY updatedAt DESC")
+    fun getTeacherCommentsForStudent(studentId: Long, academicYear: String): Flow<List<TeacherCommentEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateTeacherComment(comment: TeacherCommentEntity)

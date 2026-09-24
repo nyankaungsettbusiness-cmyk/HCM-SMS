@@ -74,6 +74,12 @@ interface MarksDao {
     @Query("SELECT * FROM assessment_results ORDER BY id ASC")
     fun getAllAssessmentResults(): Flow<List<AssessmentResultSummaryEntity>>
 
+    @Query("SELECT * FROM assessment_results WHERE studentId = :studentId")
+    fun getAssessmentResultsForStudent(studentId: Long): Flow<List<AssessmentResultSummaryEntity>>
+
+    @Query("SELECT * FROM student_marks WHERE studentId = :studentId")
+    fun getMarksForStudent(studentId: Long): Flow<List<StudentMarkEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateResultSummary(summary: AssessmentResultSummaryEntity)
 

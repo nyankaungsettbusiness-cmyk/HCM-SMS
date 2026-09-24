@@ -11,13 +11,31 @@ import android.os.Environment
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.example.BuildConfig
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
+
+sealed class DownloadProgressState {
+    object Idle : DownloadProgressState()
+    data class Downloading(
+        val progress: Float, // 0.0f to 1.0f (-1f if indeterminate)
+        val percentage: Int, // 0 to 100 (-1 if indeterminate)
+        val downloadedBytes: Long,
+        val totalBytes: Long,
+        val downloadedMb: String,
+        val totalMb: String,
+        val statusText: String
+    ) : DownloadProgressState()
+    data class Installing(val fileName: String) : DownloadProgressState()
+    data class Error(val message: String) : DownloadProgressState()
+}
 
 data class AppUpdateInfo(
     val hasUpdate: Boolean,
@@ -40,6 +58,17 @@ object AppUpdateManager {
         "nyankaungsett-business/HCM-SMS",
         "nyankaungsett-business/hcm-sms"
     )
+
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var progressPollingJob: Job? = null
+    private val _downloadProgress = MutableStateFlow<DownloadProgressState>(DownloadProgressState.Idle)
+    val downloadProgress: StateFlow<DownloadProgressState> = _downloadProgress.asStateFlow()
+
+    fun resetDownloadState() {
+        progressPollingJob?.cancel()
+        progressPollingJob = null
+        _downloadProgress.value = DownloadProgressState.Idle
+    }
 
     /**
      * Checks GitHub Releases for a newer version than current BuildConfig.VERSION_NAME
@@ -164,10 +193,31 @@ object AppUpdateManager {
             val fileName = "HCM_SMS_v${versionName.replace(' ', '_')}.apk"
             val targetFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
             if (targetFile.exists() && targetFile.length() > 1024 * 1024) {
-                // If the APK was already downloaded, install directly
+                // If the APK was already downloaded, report complete and install directly
+                val fileSizeMb = String.format(Locale.US, "%.1f MB", targetFile.length() / (1024.0 * 1024.0))
+                _downloadProgress.value = DownloadProgressState.Downloading(
+                    progress = 1f,
+                    percentage = 100,
+                    downloadedBytes = targetFile.length(),
+                    totalBytes = targetFile.length(),
+                    downloadedMb = fileSizeMb,
+                    totalMb = fileSizeMb,
+                    statusText = "APK ready in cache. Launching installer..."
+                )
+                _downloadProgress.value = DownloadProgressState.Installing(fileName)
                 installDownloadedApk(context, fileName)
                 return
             }
+
+            _downloadProgress.value = DownloadProgressState.Downloading(
+                progress = -1f,
+                percentage = -1,
+                downloadedBytes = 0,
+                totalBytes = 0,
+                downloadedMb = "0.0 MB",
+                totalMb = "-- MB",
+                statusText = "Connecting to update server..."
+            )
 
             val uri = Uri.parse(apkUrl)
             val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
@@ -182,6 +232,102 @@ object AppUpdateManager {
 
             val downloadId = downloadManager.enqueue(request)
 
+            // Start polling progress every 250ms
+            progressPollingJob?.cancel()
+            progressPollingJob = coroutineScope.launch {
+                var isDone = false
+                while (!isDone && isActive) {
+                    delay(250)
+                    try {
+                        val query = DownloadManager.Query().setFilterById(downloadId)
+                        val cursor = downloadManager.query(query)
+                        if (cursor != null) {
+                            if (cursor.moveToFirst()) {
+                                val bytesSoFar = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                                val totalBytes = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                                val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+
+                                when (status) {
+                                    DownloadManager.STATUS_RUNNING -> {
+                                        val pct = if (totalBytes > 0) {
+                                            ((bytesSoFar.toDouble() / totalBytes.toDouble()) * 100).toInt().coerceIn(0, 100)
+                                        } else {
+                                            -1
+                                        }
+                                        val fraction = if (totalBytes > 0) {
+                                            (bytesSoFar.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+                                        } else {
+                                            -1f
+                                        }
+                                        val dlMb = String.format(Locale.US, "%.1f MB", bytesSoFar / (1024.0 * 1024.0))
+                                        val totMb = if (totalBytes > 0) {
+                                            String.format(Locale.US, "%.1f MB", totalBytes / (1024.0 * 1024.0))
+                                        } else {
+                                            "-- MB"
+                                        }
+                                        _downloadProgress.value = DownloadProgressState.Downloading(
+                                            progress = fraction,
+                                            percentage = pct,
+                                            downloadedBytes = bytesSoFar,
+                                            totalBytes = totalBytes,
+                                            downloadedMb = dlMb,
+                                            totalMb = totMb,
+                                            statusText = if (pct >= 0) "Downloading... $pct%" else "Downloading... ($dlMb)"
+                                        )
+                                    }
+                                    DownloadManager.STATUS_PENDING -> {
+                                        _downloadProgress.value = DownloadProgressState.Downloading(
+                                            progress = -1f,
+                                            percentage = -1,
+                                            downloadedBytes = 0,
+                                            totalBytes = totalBytes,
+                                            downloadedMb = "0.0 MB",
+                                            totalMb = if (totalBytes > 0) String.format(Locale.US, "%.1f MB", totalBytes / (1024.0 * 1024.0)) else "--",
+                                            statusText = "Waiting for network connection..."
+                                        )
+                                    }
+                                    DownloadManager.STATUS_SUCCESSFUL -> {
+                                        isDone = true
+                                        val finalSize = if (totalBytes > 0) totalBytes else bytesSoFar
+                                        val finalMb = String.format(Locale.US, "%.1f MB", finalSize / (1024.0 * 1024.0))
+                                        _downloadProgress.value = DownloadProgressState.Downloading(
+                                            progress = 1f,
+                                            percentage = 100,
+                                            downloadedBytes = finalSize,
+                                            totalBytes = finalSize,
+                                            downloadedMb = finalMb,
+                                            totalMb = finalMb,
+                                            statusText = "Download complete (100%). Launching installer..."
+                                        )
+                                    }
+                                    DownloadManager.STATUS_PAUSED -> {
+                                        _downloadProgress.value = DownloadProgressState.Downloading(
+                                            progress = if (totalBytes > 0) (bytesSoFar.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else -1f,
+                                            percentage = if (totalBytes > 0) ((bytesSoFar.toDouble() / totalBytes.toDouble()) * 100).toInt() else -1,
+                                            downloadedBytes = bytesSoFar,
+                                            totalBytes = totalBytes,
+                                            downloadedMb = String.format(Locale.US, "%.1f MB", bytesSoFar / (1024.0 * 1024.0)),
+                                            totalMb = if (totalBytes > 0) String.format(Locale.US, "%.1f MB", totalBytes / (1024.0 * 1024.0)) else "--",
+                                            statusText = "Download paused (waiting for WiFi/network)..."
+                                        )
+                                    }
+                                    DownloadManager.STATUS_FAILED -> {
+                                        isDone = true
+                                        val reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                                        _downloadProgress.value = DownloadProgressState.Error(
+                                            "Download interrupted (code $reason). You can retry or open in browser."
+                                        )
+                                    }
+                                }
+                            }
+                            cursor.close()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error querying download progress", e)
+                    }
+                }
+            }
+
             // Register receiver to prompt install when finished
             val onComplete = object : BroadcastReceiver() {
                 override fun onReceive(ctxt: Context, intent: Intent) {
@@ -191,6 +337,7 @@ object AppUpdateManager {
                             ctxt.unregisterReceiver(this)
                         } catch (_: Exception) {}
 
+                        _downloadProgress.value = DownloadProgressState.Installing(fileName)
                         installDownloadedApk(ctxt, fileName)
                     }
                 }
@@ -210,6 +357,9 @@ object AppUpdateManager {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enqueue download", e)
+            _downloadProgress.value = DownloadProgressState.Error(
+                "Failed to start download: ${e.message ?: "Unknown error"}. Opening browser fallback..."
+            )
             // Fallback: Open browser directly
             openApkInBrowser(context, apkUrl)
         }

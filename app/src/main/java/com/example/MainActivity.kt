@@ -402,7 +402,10 @@ fun HcmMainApp(
                                 academicYear = academicYear,
                                 currentUser = currentUser,
                                 deletionVerificationEvent = studentViewModel.deletionVerificationEvent,
-                                attendanceRepository = attendanceRepo
+                                attendanceRepository = attendanceRepo,
+                                holisticRepository = holisticRepo,
+                                marksRepository = marksRepo,
+                                reportRepository = reportRepo
                             )
                         }
 

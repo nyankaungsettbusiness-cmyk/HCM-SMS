@@ -106,6 +106,10 @@ class ReportRepository(
         reportDao.insertGenerationHistory(history)
     }
 
+    fun getGenerationHistoryForStudent(studentId: Long): Flow<List<ReportGenerationHistoryEntity>> {
+        return reportDao.getGenerationHistoryForStudent(studentId)
+    }
+
     suspend fun saveReportSettings(settings: ReportSettingEntity) {
         reportDao.saveReportSettings(settings)
     }
