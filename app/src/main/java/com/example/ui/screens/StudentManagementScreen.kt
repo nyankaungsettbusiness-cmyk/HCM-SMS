@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,6 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.GradeEntity
 import com.example.data.local.entity.StudentEntity
+import com.example.data.local.entity.AttendanceRecordEntity
+import com.example.data.local.entity.AttendanceStatus
+import com.example.data.repository.AttendanceRepository
 import com.example.data.policy.SchoolPolicy
 import com.example.ui.util.StudentPhotoUtils
 
@@ -53,7 +57,8 @@ fun StudentManagementScreen(
     onImportMockData: () -> Unit,
     academicYear: String = "2026-2027",
     currentUser: com.example.data.local.entity.UserEntity? = null,
-    deletionVerificationEvent: kotlinx.coroutines.flow.SharedFlow<com.example.data.sync.DeletionVerificationResult>? = null
+    deletionVerificationEvent: kotlinx.coroutines.flow.SharedFlow<com.example.data.sync.DeletionVerificationResult>? = null,
+    attendanceRepository: AttendanceRepository? = null
 ) {
     val canDeleteStudent = currentUser?.role == com.example.data.local.entity.UserRole.SUPER_ADMIN ||
             currentUser?.role == com.example.data.local.entity.UserRole.ADMIN
@@ -337,12 +342,29 @@ fun StudentManagementScreen(
         )
     }
 
+    // Real Attendance records for the student currently being viewed
+    val studentAttendanceRecords by produceState<List<AttendanceRecordEntity>>(
+        initialValue = emptyList(),
+        key1 = studentToViewDetail?.id,
+        key2 = academicYear
+    ) {
+        val currentStudent = studentToViewDetail
+        if (currentStudent != null && attendanceRepository != null) {
+            attendanceRepository.getAttendanceForStudent(currentStudent.id, academicYear).collect {
+                value = it
+            }
+        } else {
+            value = emptyList()
+        }
+    }
+
     // View Student Profile Detail Dialog
     studentToViewDetail?.let { student ->
         StudentDetailDialog(
             student = student,
             academicYear = academicYear,
             canDelete = canDeleteStudent,
+            attendanceRecords = studentAttendanceRecords,
             onEdit = {
                 studentToEdit = student
                 studentToViewDetail = null
@@ -1032,18 +1054,26 @@ fun StudentDetailDialog(
     student: StudentEntity,
     academicYear: String,
     canDelete: Boolean = true,
+    attendanceRecords: List<AttendanceRecordEntity> = emptyList(),
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("Profile", "Academic", "Attendance", "HCM Holistic", "Reports")
+    val scrollState = rememberScrollState()
+
+    // Reset scroll when switching tabs so each tab starts at the top
+    LaunchedEffect(selectedTab) {
+        scrollState.scrollTo(0)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp),
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1108,7 +1138,7 @@ fun StudentDetailDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp),
+                    .heightIn(min = 280.dp, max = 460.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ScrollableTabRow(
@@ -1125,12 +1155,20 @@ fun StudentDetailDialog(
                     }
                 }
 
-                when (selectedTab) {
-                    0 -> ProfileAndParentTab(student)
-                    1 -> AcademicDataTab(student, academicYear)
-                    2 -> AttendanceDataTab(student)
-                    3 -> HcmHolisticTab(student)
-                    4 -> ReportInfoTab(student, academicYear)
+                // Scrollable container for tab content so all information is completely visible
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .verticalScroll(scrollState)
+                ) {
+                    when (selectedTab) {
+                        0 -> ProfileAndParentTab(student)
+                        1 -> AcademicDataTab(student, academicYear)
+                        2 -> AttendanceDataTab(student, academicYear, attendanceRecords)
+                        3 -> HcmHolisticTab(student)
+                        4 -> ReportInfoTab(student, academicYear)
+                    }
                 }
             }
         },
@@ -1252,30 +1290,138 @@ fun AcademicDataTab(student: StudentEntity, academicYear: String) {
 }
 
 @Composable
-fun AttendanceDataTab(student: StudentEntity) {
+fun AttendanceDataTab(
+    student: StudentEntity,
+    academicYear: String,
+    attendanceRecords: List<AttendanceRecordEntity>
+) {
+    val totalRecords = attendanceRecords.size
+    val presentCount = attendanceRecords.count { it.status == AttendanceStatus.PRESENT }
+    val absentCount = attendanceRecords.count { it.status == AttendanceStatus.ABSENT }
+    val leaveCount = attendanceRecords.count { it.status == AttendanceStatus.LEAVE }
+    val lateCount = attendanceRecords.count { it.status == AttendanceStatus.LATE }
+
+    val rateStr = if (totalRecords > 0) {
+        val pct = ((presentCount.toDouble() + (lateCount.toDouble() * 0.5)) / totalRecords.toDouble()) * 100.0
+        String.format(java.util.Locale.US, "%.1f%%", pct)
+    } else {
+        "N/A"
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        DetailSectionCard(title = "Attendance Summary") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AttendanceStatBadge("Present", "172 days", Color(0xFF2E7D32))
-                AttendanceStatBadge("Absent", "4 days", Color(0xFFC62828))
-                AttendanceStatBadge("Leave", "2 days", Color(0xFFEF6C00))
-                AttendanceStatBadge("Rate", "96.6%", MaterialTheme.colorScheme.primary)
+        DetailSectionCard(title = "Attendance Summary ($academicYear)") {
+            if (totalRecords == 0) {
+                // Clear and accurate empty state when no attendance records exist yet
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EventBusy,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Text(
+                        text = "No Attendance Records Recorded",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "No attendance has been recorded for ${student.name} in academic year $academicYear yet. Once marked in the Attendance module, statistics and session logs will appear here.",
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AttendanceStatBadge("Present", "$presentCount days", Color(0xFF2E7D32))
+                    AttendanceStatBadge("Absent", "$absentCount days", Color(0xFFC62828))
+                    AttendanceStatBadge("Leave", "$leaveCount days", Color(0xFFEF6C00))
+                    AttendanceStatBadge("Late", "$lateCount days", Color(0xFFF57C00))
+                    AttendanceStatBadge("Rate", rateStr, MaterialTheme.colorScheme.primary)
+                }
             }
         }
 
-        DetailSectionCard(title = "Punctuality & Notes") {
-            DetailRow("Morning Session", "Regular (08:00 AM - 12:00 PM)")
-            DetailRow("Afternoon Session", "Regular (12:30 PM - 03:30 PM)")
-            DetailRow("Overall Record", "Good attendance record for current term.")
+        if (totalRecords > 0) {
+            DetailSectionCard(title = "Recent Sessions (${attendanceRecords.size} Total)") {
+                val recentRecords = remember(attendanceRecords) {
+                    attendanceRecords.sortedByDescending { it.date + "_" + it.session.name }.take(8)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    recentRecords.forEach { record ->
+                        val (badgeColor, badgeBg) = when (record.status) {
+                            AttendanceStatus.PRESENT -> Color(0xFF2E7D32) to Color(0xFFE8F5E9)
+                            AttendanceStatus.ABSENT -> Color(0xFFC62828) to Color(0xFFFFEBEE)
+                            AttendanceStatus.LATE -> Color(0xFFF57C00) to Color(0xFFFFF3E0)
+                            AttendanceStatus.LEAVE -> Color(0xFF1976D2) to Color(0xFFE3F2FD)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarToday,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = record.date,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "(${record.session.name.lowercase().replaceFirstChar { it.uppercase() }})",
+                                    fontSize = 10.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                            Surface(
+                                color = badgeBg,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = record.status.name,
+                                    color = badgeColor,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            DetailSectionCard(title = "Punctuality & Schedule") {
+                DetailRow("Morning Session", "Regular (08:00 AM - 12:00 PM)")
+                DetailRow("Afternoon Session", "Regular (12:30 PM - 03:30 PM)")
+                DetailRow("Status", "Awaiting first attendance check-in")
+            }
         }
     }
 }

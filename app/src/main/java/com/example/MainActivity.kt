@@ -401,7 +401,8 @@ fun HcmMainApp(
                                 onImportMockData = { studentViewModel.importMockData() },
                                 academicYear = academicYear,
                                 currentUser = currentUser,
-                                deletionVerificationEvent = studentViewModel.deletionVerificationEvent
+                                deletionVerificationEvent = studentViewModel.deletionVerificationEvent,
+                                attendanceRepository = attendanceRepo
                             )
                         }
 
