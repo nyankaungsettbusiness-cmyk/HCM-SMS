@@ -38,6 +38,15 @@ class AttendanceViewModel(
     private val _academicYear = MutableStateFlow("2026-2027")
     val academicYear: StateFlow<String> = _academicYear.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            val activeYear = academicYearRepository?.getActiveAcademicYear()?.firstOrNull()?.yearCode
+            if (!activeYear.isNullOrBlank()) {
+                _academicYear.value = activeYear
+            }
+        }
+    }
+
     private val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     private val _selectedDate = MutableStateFlow(todayStr)
     val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()

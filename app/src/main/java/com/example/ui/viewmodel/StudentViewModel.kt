@@ -106,6 +106,15 @@ class StudentViewModel(
         initialValue = emptyList()
     )
 
+    init {
+        viewModelScope.launch {
+            val activeYear = academicYearRepository?.getActiveAcademicYear()?.firstOrNull()?.yearCode
+            if (!activeYear.isNullOrBlank()) {
+                _academicYear.value = activeYear
+            }
+        }
+    }
+
     fun setAcademicYear(year: String) {
         if (year.isNotBlank()) {
             _academicYear.value = year

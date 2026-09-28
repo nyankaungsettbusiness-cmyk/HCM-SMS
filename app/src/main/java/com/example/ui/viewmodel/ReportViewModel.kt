@@ -36,6 +36,10 @@ class ReportViewModel(private val repository: ReportRepository) : ViewModel() {
         viewModelScope.launch {
             try {
                 repository.ensureG4Student()
+                val activeYear = repository.getActiveAcademicYear()
+                if (!activeYear.isNullOrBlank()) {
+                    academicYear.value = activeYear
+                }
             } catch (_: Exception) {}
         }
     }

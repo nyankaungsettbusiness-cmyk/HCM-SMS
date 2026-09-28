@@ -174,6 +174,12 @@ interface SchoolPolicyDao {
     @Query("SELECT * FROM grading_policies ORDER BY id ASC")
     fun getAllGradingPolicies(): Flow<List<GradingPolicyEntity>>
 
+    @Query("SELECT * FROM grading_policies ORDER BY id ASC")
+    suspend fun getAllGradingPoliciesSync(): List<GradingPolicyEntity>
+
+    @Query("SELECT * FROM grading_policies WHERE educationLevel = :level AND LOWER(subjectName) = LOWER(:subject) LIMIT 1")
+    suspend fun getGradingPolicyForSubject(level: EducationLevel, subject: String): GradingPolicyEntity?
+
     @Query("SELECT * FROM grading_policies WHERE isDirty = 1")
     suspend fun getGradingPoliciesForSync(): List<GradingPolicyEntity>
 

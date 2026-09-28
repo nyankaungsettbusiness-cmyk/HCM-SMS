@@ -17,6 +17,16 @@ class HolisticViewModel(
 
     // Filter Controls
     val academicYear = MutableStateFlow("2026-2027")
+
+    init {
+        viewModelScope.launch {
+            val activeYear = academicYearRepository?.getActiveAcademicYear()?.firstOrNull()?.yearCode
+            if (!activeYear.isNullOrBlank()) {
+                academicYear.value = activeYear
+            }
+        }
+    }
+
     val selectedGrade = MutableStateFlow("G5")
     val selectedClass = MutableStateFlow("A")
     val selectedPeriod = MutableStateFlow("June")

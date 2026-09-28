@@ -71,6 +71,17 @@ class SystemSettingsViewModel(
     private val _lastExportedFile = MutableStateFlow<File?>(null)
     val lastExportedFile: StateFlow<File?> = _lastExportedFile.asStateFlow()
 
+    private val _lastBackupFile = MutableStateFlow<File?>(null)
+    val lastBackupFile: StateFlow<File?> = _lastBackupFile.asStateFlow()
+
+    fun clearLastExportedFile() {
+        _lastExportedFile.value = null
+    }
+
+    fun clearLastBackupFile() {
+        _lastBackupFile.value = null
+    }
+
     init {
         refreshDatabaseSize()
     }
@@ -148,6 +159,7 @@ class SystemSettingsViewModel(
             _isLoading.value = true
             try {
                 val file = repository.createFullBackup()
+                _lastBackupFile.value = file
                 _statusMessage.value = "Full Backup Created: ${file.name} saved in Documents/HCM_SMS_Backups/"
             } catch (e: Exception) {
                 _statusMessage.value = "Backup Failed: ${e.localizedMessage}"

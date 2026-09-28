@@ -1421,62 +1421,198 @@ class SystemSettingsRepository(
     // IMPORT & EXPORT
     // ==========================================
 
+    private fun parseCsvLine(line: String): List<String> {
+        val result = mutableListOf<String>()
+        val sb = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
+            if (c == '\"') {
+                if (inQuotes && i + 1 < line.length && line[i + 1] == '\"') {
+                    sb.append('\"')
+                    i++
+                } else {
+                    inQuotes = !inQuotes
+                }
+            } else if (c == ',' && !inQuotes) {
+                result.add(sb.toString().trim())
+                sb.clear()
+            } else {
+                sb.append(c)
+            }
+            i++
+        }
+        result.add(sb.toString().trim())
+        return result
+    }
+
     suspend fun importData(entityType: String, content: String, isJson: Boolean): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         try {
             var importedCount = 0
+            val normalizedEntity = entityType.uppercase().trim()
+            val activeYear = academicYearDao.getActiveAcademicYearSync()?.yearCode ?: "2026-2027"
+
             if (isJson) {
                 val jsonArray = JSONArray(content)
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
-                    when (entityType.uppercase()) {
+                    when (normalizedEntity) {
                         "STUDENTS" -> {
                             val st = StudentEntity(
-                                studentCode = obj.optString("studentCode", "HCM-2025-${100 + i}"),
-                                name = obj.optString("name", "Imported Student $i"),
+                                studentCode = obj.optString("studentCode", "HCM-${activeYear.take(4)}-${100 + i}"),
+                                name = obj.optString("name", "Student ${i + 1}"),
                                 gender = obj.optString("gender", "Male"),
                                 dateOfBirth = obj.optString("dateOfBirth", "2015-01-01"),
                                 gradeName = obj.optString("gradeName", "G1"),
                                 className = obj.optString("className", "A"),
                                 rollNumber = obj.optInt("rollNumber", i + 1),
-                                parentName = obj.optString("parentName", "Parent"),
-                                phone = obj.optString("phone", "091234567"),
-                                address = obj.optString("address", "Yangon")
+                                parentName = obj.optString("parentName", ""),
+                                phone = obj.optString("phone", ""),
+                                address = obj.optString("address", ""),
+                                studentNrc = obj.optString("studentNrc", ""),
+                                fatherName = obj.optString("fatherName", ""),
+                                motherName = obj.optString("motherName", ""),
+                                isDirty = true,
+                                updatedAt = System.currentTimeMillis()
                             )
                             studentDao.insertStudent(st)
                             importedCount++
                         }
+                        "TEACHERS" -> {
+                            val tc = TeacherEntity(
+                                teacherCode = obj.optString("teacherCode", "TCH-${100 + i}"),
+                                fullName = obj.optString("fullName", "Teacher ${i + 1}"),
+                                phone = obj.optString("phone", ""),
+                                email = obj.optString("email", ""),
+                                address = obj.optString("address", ""),
+                                assignedGrade = obj.optString("assignedGrade", "G1"),
+                                assignedClass = obj.optString("assignedClass", "A"),
+                                assignedSubjects = obj.optString("assignedSubjects", "Myanmar"),
+                                employmentStatus = obj.optString("employmentStatus", "Active"),
+                                isDirty = true,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                            teacherDao.insertTeacher(tc)
+                            importedCount++
+                        }
                         "SUBJECTS" -> {
                             val subj = SubjectEntity(
-                                name = obj.optString("name", "Subject $i"),
-                                category = SubjectCategory.ACADEMIC,
-                                educationLevel = EducationLevel.PRIMARY
+                                name = obj.optString("name", "Subject ${i + 1}"),
+                                category = try { SubjectCategory.valueOf(obj.optString("category", "ACADEMIC")) } catch (_: Exception) { SubjectCategory.ACADEMIC },
+                                educationLevel = try { EducationLevel.valueOf(obj.optString("educationLevel", "PRIMARY")) } catch (_: Exception) { EducationLevel.PRIMARY },
+                                subTrack = obj.optString("subTrack", ""),
+                                isCustom = obj.optBoolean("isCustom", false),
+                                isDirty = true,
+                                updatedAt = System.currentTimeMillis()
                             )
                             schoolPolicyDao.insertSubject(subj)
+                            importedCount++
+                        }
+                        "MARKS" -> {
+                            val mk = StudentMarkEntity(
+                                assessmentId = obj.optLong("assessmentId", 1L),
+                                studentId = obj.optLong("studentId", 0L),
+                                studentCode = obj.optString("studentCode", ""),
+                                studentName = obj.optString("studentName", ""),
+                                rollNo = obj.optInt("rollNo", 1),
+                                subjectName = obj.optString("subjectName", ""),
+                                obtainedMarks = if (obj.has("obtainedMarks") && !obj.isNull("obtainedMarks")) obj.optDouble("obtainedMarks") else null,
+                                maxMarks = obj.optInt("maxMarks", 100),
+                                passMark = obj.optInt("passMark", 40),
+                                distinctionMark = obj.optInt("distinctionMark", 80),
+                                remarks = obj.optString("remarks", ""),
+                                isDirty = true,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                            marksDao.insertOrUpdateMark(mk)
+                            importedCount++
+                        }
+                        "ATTENDANCE" -> {
+                            val att = AttendanceRecordEntity(
+                                studentId = obj.optLong("studentId", 0L),
+                                studentCode = obj.optString("studentCode", ""),
+                                studentName = obj.optString("studentName", ""),
+                                grade = obj.optString("grade", "G1"),
+                                className = obj.optString("className", "A"),
+                                date = obj.optString("date", SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())),
+                                session = try { AttendanceSession.valueOf(obj.optString("session", "MORNING")) } catch (_: Exception) { AttendanceSession.MORNING },
+                                status = try { AttendanceStatus.valueOf(obj.optString("status", "PRESENT")) } catch (_: Exception) { AttendanceStatus.PRESENT },
+                                academicYear = obj.optString("academicYear", activeYear),
+                                isDirty = true,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                            attendanceDao.insertOrUpdateRecord(att)
                             importedCount++
                         }
                     }
                 }
             } else {
-                // CSV Parsing
-                val lines = content.lines().filter { it.isNotBlank() }
+                // Robust CSV Parsing
+                val lines = content.lines().map { it.trim() }.filter { it.isNotBlank() }
                 if (lines.size > 1) {
-                    for (line in lines.drop(1)) {
-                        val cols = line.split(",").map { it.trim().removeSurrounding("\"") }
-                        if (cols.isNotEmpty()) {
-                            when (entityType.uppercase()) {
-                                "STUDENTS" -> {
-                                    if (cols.size >= 3) {
+                    val rawHeader = lines.first()
+                    val headerCols = parseCsvLine(rawHeader).map { it.lowercase().trim() }
+                    val dataLines = lines.drop(1)
+
+                    fun colIndex(vararg keywords: String): Int {
+                        for (kw in keywords) {
+                            val idx = headerCols.indexOfFirst { it.contains(kw) }
+                            if (idx != -1) return idx
+                        }
+                        return -1
+                    }
+
+                    when (normalizedEntity) {
+                        "STUDENTS" -> {
+                            val codeIdx = colIndex("code", "id")
+                            val nameIdx = colIndex("name", "student")
+                            val genderIdx = colIndex("gender", "sex")
+                            val dobIdx = colIndex("birth", "dob", "date")
+                            val gradeIdx = colIndex("grade")
+                            val classIdx = colIndex("class", "section")
+                            val rollIdx = colIndex("roll")
+                            val nrcIdx = colIndex("nrc")
+                            val parentIdx = colIndex("parent", "guardian")
+                            val fatherIdx = colIndex("father")
+                            val motherIdx = colIndex("mother")
+                            val phoneIdx = colIndex("phone", "contact", "mobile")
+                            val addressIdx = colIndex("address", "city")
+
+                            dataLines.forEachIndexed { idx, line ->
+                                val cols = parseCsvLine(line)
+                                if (cols.isNotEmpty()) {
+                                    val nameVal = if (nameIdx != -1 && nameIdx < cols.size) cols[nameIdx] else cols.getOrElse(1) { "Student ${idx + 1}" }
+                                    if (nameVal.isNotBlank() && nameVal.lowercase() != "full name" && nameVal.lowercase() != "name") {
+                                        val codeVal = if (codeIdx != -1 && codeIdx < cols.size && cols[codeIdx].isNotBlank()) cols[codeIdx] else "HCM-${activeYear.take(4)}-${100 + idx}"
+                                        val genderVal = if (genderIdx != -1 && genderIdx < cols.size && cols[genderIdx].isNotBlank()) cols[genderIdx] else "Male"
+                                        val dobVal = if (dobIdx != -1 && dobIdx < cols.size && cols[dobIdx].isNotBlank()) cols[dobIdx] else "2015-01-01"
+                                        val gradeVal = if (gradeIdx != -1 && gradeIdx < cols.size && cols[gradeIdx].isNotBlank()) cols[gradeIdx] else "G1"
+                                        val classVal = if (classIdx != -1 && classIdx < cols.size && cols[classIdx].isNotBlank()) cols[classIdx] else "A"
+                                        val rollVal = if (rollIdx != -1 && rollIdx < cols.size) cols[rollIdx].toIntOrNull() ?: (idx + 1) else (idx + 1)
+                                        val nrcVal = if (nrcIdx != -1 && nrcIdx < cols.size) cols[nrcIdx] else ""
+                                        val fatherVal = if (fatherIdx != -1 && fatherIdx < cols.size) cols[fatherIdx] else ""
+                                        val motherVal = if (motherIdx != -1 && motherIdx < cols.size) cols[motherIdx] else ""
+                                        val parentVal = if (parentIdx != -1 && parentIdx < cols.size) cols[parentIdx] else fatherVal.ifBlank { motherVal }
+                                        val phoneVal = if (phoneIdx != -1 && phoneIdx < cols.size) cols[phoneIdx] else ""
+                                        val addressVal = if (addressIdx != -1 && addressIdx < cols.size) cols[addressIdx] else ""
+
                                         val st = StudentEntity(
-                                            studentCode = cols.getOrElse(0) { "HCM-2025-${System.currentTimeMillis() % 1000}" },
-                                            name = cols.getOrElse(1) { "Student" },
-                                            gender = cols.getOrElse(2) { "Male" },
-                                            dateOfBirth = "2015-01-01",
-                                            gradeName = cols.getOrElse(3) { "G1" },
-                                            className = cols.getOrElse(4) { "A" },
-                                            rollNumber = cols.getOrElse(5) { "1" }.toIntOrNull() ?: 1,
-                                            parentName = cols.getOrElse(6) { "Parent" },
-                                            phone = cols.getOrElse(7) { "09790001111" },
-                                            address = "Yangon"
+                                            studentCode = codeVal,
+                                            name = nameVal,
+                                            gender = genderVal,
+                                            dateOfBirth = dobVal,
+                                            gradeName = gradeVal,
+                                            className = classVal,
+                                            rollNumber = rollVal,
+                                            studentNrc = nrcVal,
+                                            fatherName = fatherVal,
+                                            motherName = motherVal,
+                                            parentName = parentVal,
+                                            phone = phoneVal,
+                                            address = addressVal,
+                                            isDirty = true,
+                                            updatedAt = System.currentTimeMillis()
                                         )
                                         studentDao.insertStudent(st)
                                         importedCount++
@@ -1484,10 +1620,163 @@ class SystemSettingsRepository(
                                 }
                             }
                         }
+                        "TEACHERS" -> {
+                            val codeIdx = colIndex("code", "id")
+                            val nameIdx = colIndex("name", "teacher")
+                            val phoneIdx = colIndex("phone", "mobile", "contact")
+                            val emailIdx = colIndex("email", "mail")
+                            val addressIdx = colIndex("address")
+                            val gradeIdx = colIndex("grade")
+                            val classIdx = colIndex("class")
+                            val subjIdx = colIndex("subject")
+                            val statusIdx = colIndex("status")
+
+                            dataLines.forEachIndexed { idx, line ->
+                                val cols = parseCsvLine(line)
+                                if (cols.isNotEmpty()) {
+                                    val nameVal = if (nameIdx != -1 && nameIdx < cols.size) cols[nameIdx] else cols.getOrElse(1) { "Teacher ${idx + 1}" }
+                                    if (nameVal.isNotBlank() && nameVal.lowercase() != "full name" && nameVal.lowercase() != "name") {
+                                        val tc = TeacherEntity(
+                                            teacherCode = if (codeIdx != -1 && codeIdx < cols.size && cols[codeIdx].isNotBlank()) cols[codeIdx] else "TCH-${100 + idx}",
+                                            fullName = nameVal,
+                                            phone = if (phoneIdx != -1 && phoneIdx < cols.size) cols[phoneIdx] else "",
+                                            email = if (emailIdx != -1 && emailIdx < cols.size) cols[emailIdx] else "",
+                                            address = if (addressIdx != -1 && addressIdx < cols.size) cols[addressIdx] else "",
+                                            assignedGrade = if (gradeIdx != -1 && gradeIdx < cols.size && cols[gradeIdx].isNotBlank()) cols[gradeIdx] else "G1",
+                                            assignedClass = if (classIdx != -1 && classIdx < cols.size && cols[classIdx].isNotBlank()) cols[classIdx] else "A",
+                                            assignedSubjects = if (subjIdx != -1 && subjIdx < cols.size && cols[subjIdx].isNotBlank()) cols[subjIdx] else "General",
+                                            employmentStatus = if (statusIdx != -1 && statusIdx < cols.size && cols[statusIdx].isNotBlank()) cols[statusIdx] else "Active",
+                                            isDirty = true,
+                                            updatedAt = System.currentTimeMillis()
+                                        )
+                                        teacherDao.insertTeacher(tc)
+                                        importedCount++
+                                    }
+                                }
+                            }
+                        }
+                        "SUBJECTS" -> {
+                            val nameIdx = colIndex("name", "subject")
+                            val catIdx = colIndex("category", "type")
+                            val levelIdx = colIndex("level", "education")
+                            val trackIdx = colIndex("track", "stream")
+
+                            dataLines.forEachIndexed { idx, line ->
+                                val cols = parseCsvLine(line)
+                                if (cols.isNotEmpty()) {
+                                    val nameVal = if (nameIdx != -1 && nameIdx < cols.size) cols[nameIdx] else cols.getOrElse(0) { "Subject ${idx + 1}" }
+                                    if (nameVal.isNotBlank() && nameVal.lowercase() != "subject name" && nameVal.lowercase() != "name") {
+                                        val catVal = if (catIdx != -1 && catIdx < cols.size) {
+                                            try { SubjectCategory.valueOf(cols[catIdx].uppercase()) } catch (_: Exception) { SubjectCategory.ACADEMIC }
+                                        } else SubjectCategory.ACADEMIC
+                                        val levelVal = if (levelIdx != -1 && levelIdx < cols.size) {
+                                            try { EducationLevel.valueOf(cols[levelIdx].uppercase()) } catch (_: Exception) { EducationLevel.PRIMARY }
+                                        } else EducationLevel.PRIMARY
+
+                                        val subj = SubjectEntity(
+                                            name = nameVal,
+                                            category = catVal,
+                                            educationLevel = levelVal,
+                                            subTrack = if (trackIdx != -1 && trackIdx < cols.size) cols[trackIdx] else "",
+                                            isCustom = true,
+                                            isDirty = true,
+                                            updatedAt = System.currentTimeMillis()
+                                        )
+                                        schoolPolicyDao.insertSubject(subj)
+                                        importedCount++
+                                    }
+                                }
+                            }
+                        }
+                        "MARKS" -> {
+                            val assIdx = colIndex("assessment", "exam")
+                            val codeIdx = colIndex("student code", "code", "id")
+                            val nameIdx = colIndex("student name", "student", "name")
+                            val rollIdx = colIndex("roll")
+                            val subjIdx = colIndex("subject")
+                            val obtainedIdx = colIndex("obtained", "mark", "score")
+                            val maxIdx = colIndex("max")
+                            val remarksIdx = colIndex("remark", "comment")
+
+                            dataLines.forEachIndexed { idx, line ->
+                                val cols = parseCsvLine(line)
+                                if (cols.size >= 4) {
+                                    val assIdVal = if (assIdx != -1 && assIdx < cols.size) cols[assIdx].toLongOrNull() ?: 1L else 1L
+                                    val codeVal = if (codeIdx != -1 && codeIdx < cols.size) cols[codeIdx] else ""
+                                    val nameVal = if (nameIdx != -1 && nameIdx < cols.size) cols[nameIdx] else ""
+                                    val rollVal = if (rollIdx != -1 && rollIdx < cols.size) cols[rollIdx].toIntOrNull() ?: (idx + 1) else (idx + 1)
+                                    val subjVal = if (subjIdx != -1 && subjIdx < cols.size) cols[subjIdx] else "General"
+                                    val obtVal = if (obtainedIdx != -1 && obtainedIdx < cols.size) cols[obtainedIdx].toDoubleOrNull() else null
+                                    val maxVal = if (maxIdx != -1 && maxIdx < cols.size) cols[maxIdx].toIntOrNull() ?: 100 else 100
+
+                                    val mk = StudentMarkEntity(
+                                        assessmentId = assIdVal,
+                                        studentId = 0L,
+                                        studentCode = codeVal,
+                                        studentName = nameVal,
+                                        rollNo = rollVal,
+                                        subjectName = subjVal,
+                                        obtainedMarks = obtVal,
+                                        maxMarks = maxVal,
+                                        passMark = 40,
+                                        distinctionMark = 80,
+                                        remarks = if (remarksIdx != -1 && remarksIdx < cols.size) cols[remarksIdx] else "",
+                                        isDirty = true,
+                                        updatedAt = System.currentTimeMillis()
+                                    )
+                                    marksDao.insertOrUpdateMark(mk)
+                                    importedCount++
+                                }
+                            }
+                        }
+                        "ATTENDANCE" -> {
+                            val codeIdx = colIndex("code", "id")
+                            val nameIdx = colIndex("name", "student")
+                            val gradeIdx = colIndex("grade")
+                            val classIdx = colIndex("class")
+                            val dateIdx = colIndex("date")
+                            val sessionIdx = colIndex("session")
+                            val statusIdx = colIndex("status")
+
+                            dataLines.forEachIndexed { idx, line ->
+                                val cols = parseCsvLine(line)
+                                if (cols.size >= 3) {
+                                    val codeVal = if (codeIdx != -1 && codeIdx < cols.size) cols[codeIdx] else "HCM-${100 + idx}"
+                                    val nameVal = if (nameIdx != -1 && nameIdx < cols.size) cols[nameIdx] else "Student"
+                                    val gradeVal = if (gradeIdx != -1 && gradeIdx < cols.size) cols[gradeIdx] else "G1"
+                                    val classVal = if (classIdx != -1 && classIdx < cols.size) cols[classIdx] else "A"
+                                    val dateVal = if (dateIdx != -1 && dateIdx < cols.size && cols[dateIdx].isNotBlank()) cols[dateIdx] else SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                                    val sessVal = if (sessionIdx != -1 && sessionIdx < cols.size) {
+                                        try { AttendanceSession.valueOf(cols[sessionIdx].uppercase()) } catch (_: Exception) { AttendanceSession.MORNING }
+                                    } else AttendanceSession.MORNING
+                                    val statVal = if (statusIdx != -1 && statusIdx < cols.size) {
+                                        try { AttendanceStatus.valueOf(cols[statusIdx].uppercase()) } catch (_: Exception) { AttendanceStatus.PRESENT }
+                                    } else AttendanceStatus.PRESENT
+
+                                    val att = AttendanceRecordEntity(
+                                        studentId = 0L,
+                                        studentCode = codeVal,
+                                        studentName = nameVal,
+                                        grade = gradeVal,
+                                        className = classVal,
+                                        date = dateVal,
+                                        session = sessVal,
+                                        status = statVal,
+                                        academicYear = activeYear,
+                                        isDirty = true,
+                                        updatedAt = System.currentTimeMillis()
+                                    )
+                                    attendanceDao.insertOrUpdateRecord(att)
+                                    importedCount++
+                                }
+                            }
+                        }
                     }
                 }
             }
+
             logAudit("DATA_IMPORT", "Successfully imported $importedCount $entityType records")
+            triggerBackgroundSync()
             Pair(true, "Successfully imported $importedCount $entityType records!")
         } catch (e: Exception) {
             Pair(false, "Import failed: ${e.localizedMessage}")
@@ -1497,7 +1786,8 @@ class SystemSettingsRepository(
     suspend fun exportData(entityType: String, isJson: Boolean): File = withContext(Dispatchers.IO) {
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val ext = if (isJson) "json" else "csv"
-        val fileName = "${entityType.lowercase()}_export_$timeStamp.$ext"
+        val normalizedEntity = entityType.uppercase().trim()
+        val fileName = "${normalizedEntity.lowercase()}_export_$timeStamp.$ext"
 
         val exportDir = try {
             val docs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
@@ -1512,9 +1802,9 @@ class SystemSettingsRepository(
 
         val file = File(exportDir, fileName)
 
-        when (entityType.uppercase()) {
+        when (normalizedEntity) {
             "STUDENTS" -> {
-                val list = studentDao.getAllStudents().firstOrNull() ?: emptyList()
+                val list = studentDao.getAllStudentsList().filter { !it.isDeleted }
                 if (isJson) {
                     val arr = JSONArray()
                     list.forEach {
@@ -1522,19 +1812,131 @@ class SystemSettingsRepository(
                             put("studentCode", it.studentCode)
                             put("name", it.name)
                             put("gender", it.gender)
+                            put("dateOfBirth", it.dateOfBirth)
                             put("gradeName", it.gradeName)
                             put("className", it.className)
                             put("rollNumber", it.rollNumber)
+                            put("studentNrc", it.studentNrc)
+                            put("fatherName", it.fatherName)
+                            put("motherName", it.motherName)
                             put("parentName", it.parentName)
                             put("phone", it.phone)
+                            put("address", it.address)
+                            put("status", it.status)
                         })
                     }
                     file.writeText(arr.toString(2))
                 } else {
                     val sb = StringBuilder()
-                    sb.append("Student Code,Full Name,Gender,Grade,Class,Roll No,Parent Name,Parent Phone\n")
+                    sb.append("Student Code,Full Name,Gender,Date of Birth,Grade,Class,Roll No,NRC,Father Name,Mother Name,Parent Phone,Address,Status\n")
                     list.forEach {
-                        sb.append("${it.studentCode},\"${it.name}\",${it.gender},${it.gradeName},${it.className},${it.rollNumber},\"${it.parentName}\",${it.phone}\n")
+                        sb.append("${it.studentCode},\"${it.name}\",${it.gender},${it.dateOfBirth},${it.gradeName},${it.className},${it.rollNumber},\"${it.studentNrc}\",\"${it.fatherName}\",\"${it.motherName}\",\"${it.phone}\",\"${it.address}\",${it.status}\n")
+                    }
+                    file.writeText(sb.toString())
+                }
+            }
+            "TEACHERS" -> {
+                val list = teacherDao.getAllTeachersList().filter { !it.isDeleted }
+                if (isJson) {
+                    val arr = JSONArray()
+                    list.forEach {
+                        arr.put(JSONObject().apply {
+                            put("teacherCode", it.teacherCode)
+                            put("fullName", it.fullName)
+                            put("phone", it.phone)
+                            put("email", it.email)
+                            put("address", it.address)
+                            put("assignedGrade", it.assignedGrade)
+                            put("assignedClass", it.assignedClass)
+                            put("assignedSubjects", it.assignedSubjects)
+                            put("employmentStatus", it.employmentStatus)
+                        })
+                    }
+                    file.writeText(arr.toString(2))
+                } else {
+                    val sb = StringBuilder()
+                    sb.append("Teacher Code,Full Name,Phone,Email,Address,Assigned Grade,Assigned Class,Assigned Subjects,Status\n")
+                    list.forEach {
+                        sb.append("${it.teacherCode},\"${it.fullName}\",\"${it.phone}\",\"${it.email}\",\"${it.address}\",${it.assignedGrade},${it.assignedClass},\"${it.assignedSubjects}\",${it.employmentStatus}\n")
+                    }
+                    file.writeText(sb.toString())
+                }
+            }
+            "MARKS" -> {
+                val list = marksDao.getAllMarksSync().filter { !it.isDeleted }
+                if (isJson) {
+                    val arr = JSONArray()
+                    list.forEach {
+                        arr.put(JSONObject().apply {
+                            put("assessmentId", it.assessmentId)
+                            put("studentCode", it.studentCode)
+                            put("studentName", it.studentName)
+                            put("rollNo", it.rollNo)
+                            put("subjectName", it.subjectName)
+                            put("obtainedMarks", it.obtainedMarks)
+                            put("maxMarks", it.maxMarks)
+                            put("passMark", it.passMark)
+                            put("distinctionMark", it.distinctionMark)
+                            put("isPassed", it.isPassed)
+                            put("isDistinction", it.isDistinction)
+                            put("remarks", it.remarks)
+                        })
+                    }
+                    file.writeText(arr.toString(2))
+                } else {
+                    val sb = StringBuilder()
+                    sb.append("Assessment ID,Student Code,Student Name,Roll No,Subject Name,Obtained Marks,Max Marks,Pass Mark,Distinction Mark,Is Passed,Is Distinction,Remarks\n")
+                    list.forEach {
+                        sb.append("${it.assessmentId},${it.studentCode},\"${it.studentName}\",${it.rollNo},\"${it.subjectName}\",${it.obtainedMarks ?: ""},${it.maxMarks},${it.passMark},${it.distinctionMark},${it.isPassed},${it.isDistinction},\"${it.remarks}\"\n")
+                    }
+                    file.writeText(sb.toString())
+                }
+            }
+            "ATTENDANCE" -> {
+                val list = attendanceDao.getAllAttendanceRecordsSync().filter { !it.isDeleted }
+                if (isJson) {
+                    val arr = JSONArray()
+                    list.forEach {
+                        arr.put(JSONObject().apply {
+                            put("studentCode", it.studentCode)
+                            put("studentName", it.studentName)
+                            put("grade", it.grade)
+                            put("className", it.className)
+                            put("date", it.date)
+                            put("session", it.session.name)
+                            put("status", it.status.name)
+                            put("academicYear", it.academicYear)
+                        })
+                    }
+                    file.writeText(arr.toString(2))
+                } else {
+                    val sb = StringBuilder()
+                    sb.append("Student Code,Student Name,Grade,Class,Date,Session,Status,Academic Year\n")
+                    list.forEach {
+                        sb.append("${it.studentCode},\"${it.studentName}\",${it.grade},${it.className},${it.date},${it.session.name},${it.status.name},${it.academicYear}\n")
+                    }
+                    file.writeText(sb.toString())
+                }
+            }
+            "SUBJECTS" -> {
+                val list = schoolPolicyDao.getAllSubjectsSync().filter { !it.isDeleted }
+                if (isJson) {
+                    val arr = JSONArray()
+                    list.forEach {
+                        arr.put(JSONObject().apply {
+                            put("name", it.name)
+                            put("category", it.category.name)
+                            put("educationLevel", it.educationLevel.name)
+                            put("subTrack", it.subTrack)
+                            put("isCustom", it.isCustom)
+                        })
+                    }
+                    file.writeText(arr.toString(2))
+                } else {
+                    val sb = StringBuilder()
+                    sb.append("Subject Name,Category,Education Level,Sub Track,Is Custom\n")
+                    list.forEach {
+                        sb.append("\"${it.name}\",${it.category.name},${it.educationLevel.name},\"${it.subTrack}\",${it.isCustom}\n")
                     }
                     file.writeText(sb.toString())
                 }

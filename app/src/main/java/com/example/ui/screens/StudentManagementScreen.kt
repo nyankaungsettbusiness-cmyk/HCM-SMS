@@ -80,6 +80,7 @@ fun StudentManagementScreen(
     var studentToViewDetail by remember { mutableStateOf<StudentEntity?>(null) }
     var studentToDelete by remember { mutableStateOf<StudentEntity?>(null) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var showMockConfirmDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(deletionVerificationEvent) {
         deletionVerificationEvent?.collect { result ->
@@ -179,16 +180,18 @@ fun StudentManagementScreen(
                         )
                     }
 
-                    IconButton(
-                        onClick = onImportMockData,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.FileDownload,
-                            contentDescription = "Import Mock Data",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
+                    if (currentUser?.role == com.example.data.local.entity.UserRole.SUPER_ADMIN) {
+                        IconButton(
+                            onClick = { showMockConfirmDialog = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.FileDownload,
+                                contentDescription = "Import Demo Students (Admin Only)",
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
                     IconButton(
@@ -343,6 +346,7 @@ fun StudentManagementScreen(
     if (showAddEditDialog) {
         AddEditStudentDialog(
             student = studentToEdit,
+            academicYear = academicYear,
             grades = gradeNames.filter { it != "All" },
             classes = listOf("A", "B", "C", "D"),
             onDismiss = { showAddEditDialog = false },
@@ -484,25 +488,115 @@ fun StudentManagementScreen(
 
     // Export Dialog
     if (showExportDialog) {
+        val exportContext = LocalContext.current
         AlertDialog(
             onDismissRequest = { showExportDialog = false },
             title = { Text("Export Student Records", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Exporting ${students.size} student records in HCM-SMS format.", fontSize = 13.sp)
-                    Text("• Student Directory Register (PDF)", fontSize = 12.sp, color = Color.Gray)
-                    Text("• Student Master Sheet (CSV/Excel)", fontSize = 12.sp, color = Color.Gray)
-                    Text("• Class & Roll Number Roster", fontSize = 12.sp, color = Color.Gray)
+                    Text("• Student Master Sheet (CSV/Excel)", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                    Text("• Includes Student ID, NRC, Parents, Class, Roll Number and Contact info.", fontSize = 11.sp, color = Color.Gray)
                 }
             },
             confirmButton = {
-                Button(onClick = { showExportDialog = false }) {
-                    Text("Download PDF/CSV", fontSize = 12.sp)
+                Button(
+                    onClick = {
+                        showExportDialog = false
+                        try {
+                            val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                            val exportDir = try {
+                                val docs = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS)
+                                val dir = java.io.File(docs, "HCM_SMS_Exports")
+                                if (!dir.exists()) dir.mkdirs()
+                                dir
+                            } catch (_: Exception) {
+                                val dir = java.io.File(exportContext.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS), "HCM_SMS_Exports")
+                                if (!dir.exists()) dir.mkdirs()
+                                dir
+                            }
+                            val file = java.io.File(exportDir, "students_roster_$timeStamp.csv")
+                            val sb = java.lang.StringBuilder()
+                            sb.append("Student Code,Full Name,Gender,Date of Birth,Grade,Class,Roll No,NRC,Father Name,Mother Name,Parent Phone,Address,Status\n")
+                            students.forEach { st ->
+                                sb.append("${st.studentCode},\"${st.name}\",${st.gender},${st.dateOfBirth},${st.gradeName},${st.className},${st.rollNumber},\"${st.studentNrc}\",\"${st.fatherName}\",\"${st.motherName}\",\"${st.phone}\",\"${st.address}\",${st.status}\n")
+                            }
+                            file.writeText(sb.toString())
+
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                exportContext,
+                                "${exportContext.packageName}.fileprovider",
+                                file
+                            )
+                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/csv"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            exportContext.startActivity(android.content.Intent.createChooser(shareIntent, "Share Student Master Sheet (CSV)"))
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(exportContext, "Export failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Export & Share CSV", fontSize = 12.sp)
                 }
             },
             dismissButton = {
                 OutlinedButton(onClick = { showExportDialog = false }) {
                     Text("Close", fontSize = 12.sp)
+                }
+            }
+        )
+    }
+
+    // Import Mock Data Confirmation Dialog (Super Admin Only)
+    if (showMockConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showMockConfirmDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = "Import Demo Students?",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Warning: This will add 4 mock students (G6, G7, G9, G11) to the active student list for testing purposes.",
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = "Do not perform this action if your school database is already operating in live production.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showMockConfirmDialog = false
+                        onImportMockData()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Import Demo Data", fontSize = 12.sp)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showMockConfirmDialog = false }) {
+                    Text("Cancel", fontSize = 12.sp)
                 }
             }
         )
@@ -731,17 +825,35 @@ fun CompactFilterDropdownChip(
 @Composable
 fun AddEditStudentDialog(
     student: StudentEntity?,
+    academicYear: String = "2026-2027",
     grades: List<String>,
     classes: List<String>,
     onDismiss: () -> Unit,
     onSave: (StudentEntity) -> Unit
 ) {
     val context = LocalContext.current
-    var studentCode by remember { mutableStateOf(student?.studentCode ?: "HCM-2025-${(100..999).random()}") }
+    val yearPrefix = academicYear.substringBefore('-').ifBlank { "2026" }
+    var studentCode by remember { mutableStateOf(student?.studentCode ?: "HCM-$yearPrefix-${(100..999).random()}") }
     var name by remember { mutableStateOf(student?.name ?: "") }
     var gender by remember { mutableStateOf(student?.gender ?: "Male") }
-    var dob by remember { mutableStateOf(student?.dateOfBirth ?: "2015-01-01") }
-    var gradeName by remember { mutableStateOf(student?.gradeName ?: "G5") }
+    var gradeName by remember { mutableStateOf(student?.gradeName ?: (grades.firstOrNull() ?: "G1")) }
+    val defaultBirthYear = when (gradeName) {
+        "KG" -> 2021
+        "G1" -> 2020
+        "G2" -> 2019
+        "G3" -> 2018
+        "G4" -> 2017
+        "G5" -> 2016
+        "G6" -> 2015
+        "G7" -> 2014
+        "G8" -> 2013
+        "G9" -> 2012
+        "G10" -> 2011
+        "G11" -> 2010
+        "G12" -> 2009
+        else -> 2016
+    }
+    var dob by remember { mutableStateOf(student?.dateOfBirth?.ifBlank { "$defaultBirthYear-06-01" } ?: "$defaultBirthYear-06-01") }
     var stream by remember { mutableStateOf(student?.stream ?: if (SchoolPolicy.isHighSchool(gradeName)) "STEAMS-1" else "") }
     var className by remember { mutableStateOf(student?.className ?: "A") }
     var rollNumber by remember { mutableStateOf(student?.rollNumber?.toString() ?: "1") }

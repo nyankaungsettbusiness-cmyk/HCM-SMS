@@ -70,6 +70,8 @@ fun SettingsScreen(
     val dbSize by viewModel.dbSize.collectAsState()
     val isTestingAi by viewModel.isTestingAi.collectAsState()
     val aiTestResult by viewModel.aiTestResult.collectAsState()
+    val lastBackupFile by viewModel.lastBackupFile.collectAsState()
+    val lastExportedFile by viewModel.lastExportedFile.collectAsState()
 
     val isAuthorized = currentUserRole == UserRole.SUPER_ADMIN || currentUserRole == UserRole.ADMIN
     if (!isAuthorized) {
@@ -254,6 +256,8 @@ fun SettingsScreen(
                 SettingsCategory.BACKUP_RESTORE -> BackupRestoreSection(
                     onCreateBackup = { viewModel.createBackup() },
                     onRestoreBackup = { jsonStr -> viewModel.restoreBackup(jsonStr) },
+                    lastBackupFile = lastBackupFile,
+                    onClearBackupFile = { viewModel.clearLastBackupFile() },
                     isEditable = currentUserRole == UserRole.SUPER_ADMIN || currentUserRole == UserRole.ADMIN,
                     onResetTestData = { clearStudents, clearTeachers, clearAssessments ->
                         viewModel.resetTestingData(clearStudents, clearTeachers, clearAssessments)
@@ -265,6 +269,8 @@ fun SettingsScreen(
                 SettingsCategory.IMPORT_EXPORT -> ImportExportSection(
                     onImport = { entity, content, isJson -> viewModel.importData(entity, content, isJson) },
                     onExport = { entity, isJson -> viewModel.exportData(entity, isJson) },
+                    lastExportedFile = lastExportedFile,
+                    onClearExportedFile = { viewModel.clearLastExportedFile() },
                     isEditable = currentUserRole == UserRole.SUPER_ADMIN || currentUserRole == UserRole.ADMIN
                 )
                 SettingsCategory.SYSTEM_LOGS -> SystemLogsSection(
@@ -1300,6 +1306,8 @@ fun AiSettingsSection(
 fun BackupRestoreSection(
     onCreateBackup: () -> Unit,
     onRestoreBackup: (String) -> Unit,
+    lastBackupFile: File? = null,
+    onClearBackupFile: () -> Unit = {},
     isEditable: Boolean,
     onResetTestData: (clearStudents: Boolean, clearTeachers: Boolean, clearAssessments: Boolean) -> Unit = { _, _, _ -> },
     onFactoryReset: () -> Unit = {}
@@ -1439,6 +1447,57 @@ fun BackupRestoreSection(
                             Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Restore Backup")
+                        }
+                    }
+
+                    if (lastBackupFile != null) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("✅ Latest Backup Ready", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                                    Text(lastBackupFile.name, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${lastBackupFile.length() / 1024} KB • Saved in Documents/HCM_SMS_Backups/", fontSize = 11.sp, color = Color.Gray)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    FilledTonalButton(
+                                        onClick = {
+                                            try {
+                                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                                    context,
+                                                    "${context.packageName}.fileprovider",
+                                                    lastBackupFile
+                                                )
+                                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                    type = "application/json"
+                                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Backup Package"))
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Share error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(34.dp)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Share", fontSize = 12.sp)
+                                    }
+                                    IconButton(onClick = onClearBackupFile, modifier = Modifier.size(34.dp)) {
+                                        Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2015,19 +2074,78 @@ fun BackupRestoreSection(
 fun ImportExportSection(
     onImport: (String, String, Boolean) -> Unit,
     onExport: (String, Boolean) -> Unit,
+    lastExportedFile: File? = null,
+    onClearExportedFile: () -> Unit = {},
     isEditable: Boolean
 ) {
     var selectedEntity by remember { mutableStateOf("Students") }
     var selectedFormat by remember { mutableStateOf("CSV") }
     var pasteDataText by remember { mutableStateOf("") }
+    val context = LocalContext.current
 
-    val entities = listOf("Students", "Teachers", "Subjects", "Assessment Settings", "Academic Years")
+    val entities = listOf("Students", "Teachers", "Marks", "Attendance", "Subjects")
 
-    val sampleCsv = """
-        Student ID,Full Name,Gender,Grade,Class,Roll No,Parent Name,Parent Phone
-        ST-1001,Aung Aung,Male,G1,A,1,U Ba,0912345678
-        ST-1002,Su Su,Female,G1,A,2,Daw Hla,0987654321
-    """.trimIndent()
+    val sampleCsv = when (selectedEntity.uppercase()) {
+        "STUDENTS" -> """
+            Student Code,Full Name,Gender,Date of Birth,Grade,Class,Roll No,NRC,Father Name,Mother Name,Parent Phone,Address
+            HCM-2026-101,Aung Aung,Male,2016-03-15,G5,A,1,12/KAMAYA(N)123456,U Ba,Daw Mya,0912345678,Bahan Yangon
+            HCM-2026-102,Su Su,Female,2016-07-22,G5,A,2,12/KAMAYA(N)654321,U Hla,Daw Tin,0987654321,Kamayut Yangon
+        """.trimIndent()
+        "TEACHERS" -> """
+            Teacher Code,Full Name,Phone,Email,Address,Assigned Grade,Assigned Class,Assigned Subjects,Status
+            TCH-2026-01,Daw Khin Win,0925001122,khinwin@school.edu,Sanchaung Yangon,G5,A,Mathematics,Active
+            TCH-2026-02,U Tun Tun,0925003344,tuntun@school.edu,Hledan Yangon,G5,A,Science,Active
+        """.trimIndent()
+        "MARKS" -> """
+            Assessment ID,Student Code,Student Name,Roll No,Subject Name,Obtained Marks,Max Marks,Remarks
+            1,HCM-2026-101,Aung Aung,1,Mathematics,85.5,100,Excellent
+            1,HCM-2026-102,Su Su,2,Mathematics,78.0,100,Good progress
+        """.trimIndent()
+        "ATTENDANCE" -> """
+            Student Code,Student Name,Grade,Class,Date,Session,Status
+            HCM-2026-101,Aung Aung,G5,A,2026-06-15,MORNING,PRESENT
+            HCM-2026-102,Su Su,G5,A,2026-06-15,MORNING,LATE
+        """.trimIndent()
+        "SUBJECTS" -> """
+            Subject Name,Category,Education Level,Sub Track
+            General Science,ACADEMIC,PRIMARY,
+            Myanmar History,ACADEMIC,SECONDARY,
+        """.trimIndent()
+        else -> """
+            Name,Code,Category
+            Sample,S-01,General
+        """.trimIndent()
+    }
+
+    val sampleJson = when (selectedEntity.uppercase()) {
+        "STUDENTS" -> """
+            [
+              {
+                "studentCode": "HCM-2026-101",
+                "name": "Aung Aung",
+                "gender": "Male",
+                "dateOfBirth": "2016-03-15",
+                "gradeName": "G5",
+                "className": "A",
+                "rollNumber": 1,
+                "phone": "0912345678"
+              }
+            ]
+        """.trimIndent()
+        "TEACHERS" -> """
+            [
+              {
+                "teacherCode": "TCH-2026-01",
+                "fullName": "Daw Khin Win",
+                "phone": "0925001122",
+                "assignedGrade": "G5",
+                "assignedClass": "A",
+                "assignedSubjects": "Mathematics"
+              }
+            ]
+        """.trimIndent()
+        else -> "[]"
+    }
 
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -2050,7 +2168,10 @@ fun ImportExportSection(
                         items(entities) { ent ->
                             FilterChip(
                                 selected = selectedEntity == ent,
-                                onClick = { selectedEntity = ent },
+                                onClick = {
+                                    selectedEntity = ent
+                                    pasteDataText = ""
+                                },
                                 label = { Text(ent, fontSize = 12.sp) }
                             )
                         }
@@ -2072,17 +2193,27 @@ fun ImportExportSection(
                     OutlinedTextField(
                         value = pasteDataText,
                         onValueChange = { pasteDataText = it },
-                        placeholder = { Text("Paste CSV or JSON content here, or use sample batch below...", fontSize = 12.sp) },
-                        modifier = Modifier.fillMaxWidth().height(100.dp)
+                        placeholder = { Text("Paste $selectedFormat content for $selectedEntity here, or click 'Load Sample Batch' below...", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth().height(120.dp),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                     )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        OutlinedButton(onClick = { pasteDataText = sampleCsv }) { Text("Load Sample Batch", fontSize = 12.sp) }
+                        OutlinedButton(onClick = {
+                            pasteDataText = if (selectedFormat == "JSON") sampleJson else sampleCsv
+                        }) {
+                            Text("Load $selectedEntity Sample", fontSize = 12.sp)
+                        }
                         Button(
-                            onClick = { onImport(selectedEntity, pasteDataText.ifBlank { sampleCsv }, selectedFormat == "JSON") },
+                            onClick = {
+                                val contentToImport = pasteDataText.ifBlank {
+                                    if (selectedFormat == "JSON") sampleJson else sampleCsv
+                                }
+                                onImport(selectedEntity, contentToImport, selectedFormat == "JSON")
+                            },
                             enabled = isEditable
                         ) {
                             Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -2105,7 +2236,7 @@ fun ImportExportSection(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text("Data Export Center", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Text("Export records to Documents/HCM_SMS_Exports/ for reporting and compliance.", fontSize = 12.sp, color = Color.Gray)
+                    Text("Export records to Documents/HCM_SMS_Exports/ for reporting, compliance, and sharing.", fontSize = 12.sp, color = Color.Gray)
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2117,7 +2248,7 @@ fun ImportExportSection(
                         ) {
                             Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Export CSV")
+                            Text("Export $selectedEntity (CSV)")
                         }
 
                         OutlinedButton(
@@ -2127,6 +2258,58 @@ fun ImportExportSection(
                             Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Export JSON")
+                        }
+                    }
+
+                    if (lastExportedFile != null) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("📄 Exported File Ready", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary)
+                                    Text(lastExportedFile.name, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${lastExportedFile.length() / 1024} KB • Saved in Documents/HCM_SMS_Exports/", fontSize = 11.sp, color = Color.Gray)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    FilledTonalButton(
+                                        onClick = {
+                                            try {
+                                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                                    context,
+                                                    "${context.packageName}.fileprovider",
+                                                    lastExportedFile
+                                                )
+                                                val mime = if (lastExportedFile.name.endsWith(".json")) "application/json" else "text/csv"
+                                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                    type = mime
+                                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Exported Data"))
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Share error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(34.dp)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Share", fontSize = 12.sp)
+                                    }
+                                    IconButton(onClick = onClearExportedFile, modifier = Modifier.size(34.dp)) {
+                                        Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
                         }
                     }
                 }

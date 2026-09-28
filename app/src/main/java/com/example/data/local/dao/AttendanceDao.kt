@@ -56,6 +56,9 @@ interface AttendanceDao {
     @Query("SELECT * FROM attendance_records ORDER BY recordedDateTime DESC")
     fun getAllAttendanceRecords(): Flow<List<AttendanceRecordEntity>>
 
+    @Query("SELECT * FROM attendance_records ORDER BY recordedDateTime DESC")
+    suspend fun getAllAttendanceRecordsSync(): List<AttendanceRecordEntity>
+
     @Query("DELETE FROM attendance_records")
     suspend fun deleteAll()
 }

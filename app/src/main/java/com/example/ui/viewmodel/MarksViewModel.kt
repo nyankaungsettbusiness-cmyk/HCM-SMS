@@ -52,6 +52,16 @@ class MarksViewModel(
 ) : ViewModel() {
 
     val academicYear = MutableStateFlow("2026-2027")
+
+    init {
+        viewModelScope.launch {
+            val activeYear = academicYearRepository?.getActiveAcademicYear()?.firstOrNull()?.yearCode
+            if (!activeYear.isNullOrBlank()) {
+                academicYear.value = activeYear
+            }
+        }
+    }
+
     val selectedGrade = MutableStateFlow("G5")
     val selectedStream = MutableStateFlow("STEAMS-1")
     val selectedClass = MutableStateFlow("All Classes")

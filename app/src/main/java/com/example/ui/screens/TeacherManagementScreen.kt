@@ -152,6 +152,53 @@ fun TeacherManagementScreen(
                         )
                     }
 
+                    IconButton(
+                        onClick = {
+                            try {
+                                val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                                val exportDir = try {
+                                    val docs = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS)
+                                    val dir = java.io.File(docs, "HCM_SMS_Exports")
+                                    if (!dir.exists()) dir.mkdirs()
+                                    dir
+                                } catch (_: Exception) {
+                                    val dir = java.io.File(localContext.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS), "HCM_SMS_Exports")
+                                    if (!dir.exists()) dir.mkdirs()
+                                    dir
+                                }
+                                val file = java.io.File(exportDir, "teachers_roster_$timeStamp.csv")
+                                val sb = java.lang.StringBuilder()
+                                sb.append("Teacher Code,Full Name,Phone,Email,Address,Assigned Grade,Assigned Class,Assigned Subjects,Status\n")
+                                teachers.forEach { tc ->
+                                    sb.append("${tc.teacherCode},\"${tc.fullName}\",\"${tc.phone}\",\"${tc.email}\",\"${tc.address}\",${tc.assignedGrade},${tc.assignedClass},\"${tc.assignedSubjects}\",${tc.employmentStatus}\n")
+                                }
+                                file.writeText(sb.toString())
+
+                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    localContext,
+                                    "${localContext.packageName}.fileprovider",
+                                    file
+                                )
+                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/csv"
+                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                localContext.startActivity(android.content.Intent.createChooser(shareIntent, "Share Teacher Roster (CSV)"))
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(localContext, "Export error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Download,
+                            contentDescription = "Export Teachers",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
                     if (canEditTeachers) {
                         FilledTonalIconButton(
                             onClick = {
@@ -537,14 +584,15 @@ fun AddEditTeacherDialog(
     onDismiss: () -> Unit,
     onSave: (teacher: TeacherEntity, createAccount: Boolean, username: String, pass: String, mustChange: Boolean) -> Unit
 ) {
-    var teacherCode by remember { mutableStateOf(teacher?.teacherCode ?: "TCH-2025-${(100..999).random()}") }
+    val currentYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+    var teacherCode by remember { mutableStateOf(teacher?.teacherCode ?: "TCH-$currentYear-${(100..999).random()}") }
     var fullName by remember { mutableStateOf(teacher?.fullName ?: "") }
     var phone by remember { mutableStateOf(teacher?.phone ?: "") }
     var email by remember { mutableStateOf(teacher?.email ?: "") }
     var address by remember { mutableStateOf(teacher?.address ?: "") }
-    var assignedGrade by remember { mutableStateOf(teacher?.assignedGrade ?: "G5, G8") }
+    var assignedGrade by remember { mutableStateOf(teacher?.assignedGrade ?: "G1") }
     var assignedClass by remember { mutableStateOf(teacher?.assignedClass ?: "A") }
-    var assignedSubjects by remember { mutableStateOf(teacher?.assignedSubjects ?: "Mathematics, Science") }
+    var assignedSubjects by remember { mutableStateOf(teacher?.assignedSubjects ?: "General") }
     var employmentStatus by remember { mutableStateOf(teacher?.employmentStatus ?: "Active") }
 
     // Account Creation Options (for new teacher)

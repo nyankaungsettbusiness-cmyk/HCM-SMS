@@ -11,6 +11,7 @@ import com.example.data.local.entity.AssessmentEntity
 import com.example.data.local.entity.StudentEntity
 import com.example.data.local.entity.StudentMarkEntity
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 
 data class StudentRankingItem(
     val rank: Int,
@@ -52,6 +53,16 @@ class ExamRankingViewModel(
 ) : ViewModel() {
 
     val selectedAcademicYear = MutableStateFlow("2026-2027")
+
+    init {
+        viewModelScope.launch {
+            val activeYear = academicYearDao.getActiveAcademicYear().firstOrNull()?.yearCode
+            if (!activeYear.isNullOrBlank()) {
+                selectedAcademicYear.value = activeYear
+            }
+        }
+    }
+
     val selectedGrade = MutableStateFlow("G12")
     val selectedAssessmentId = MutableStateFlow<Long?>(null)
     val selectedSubject = MutableStateFlow("ALL")

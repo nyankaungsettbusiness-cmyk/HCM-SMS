@@ -97,6 +97,11 @@ class MarksRepository(
         return 40 // Default standard pass mark from policy
     }
 
+    suspend fun getPassMarkForSubject(educationLevel: EducationLevel, subjectName: String): Int {
+        val policy = schoolPolicyDao.getGradingPolicyForSubject(educationLevel, subjectName)
+        return policy?.passMark ?: getPassMark(educationLevel, subjectName)
+    }
+
     fun getDistinctionMark(educationLevel: EducationLevel, subjectName: String): Int {
         val subjectLower = subjectName.lowercase()
         return when (educationLevel) {
@@ -111,5 +116,18 @@ class MarksRepository(
                 }
             }
         }
+    }
+
+    suspend fun getDistinctionMarkForSubject(educationLevel: EducationLevel, subjectName: String): Int {
+        val policy = schoolPolicyDao.getGradingPolicyForSubject(educationLevel, subjectName)
+        return policy?.distinctionMark ?: getDistinctionMark(educationLevel, subjectName)
+    }
+
+    fun validateMark(obtainedMarks: Double?, maxMarks: Int): String? {
+        if (obtainedMarks == null) return null // empty/unentered is permissible during drafting
+        if (obtainedMarks.isNaN()) return "Invalid number"
+        if (obtainedMarks < 0.0) return "Mark cannot be negative"
+        if (obtainedMarks > maxMarks) return "Mark ($obtainedMarks) exceeds maximum ($maxMarks)"
+        return null
     }
 }

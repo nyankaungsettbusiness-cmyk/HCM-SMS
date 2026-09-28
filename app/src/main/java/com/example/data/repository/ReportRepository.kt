@@ -114,6 +114,10 @@ class ReportRepository(
         reportDao.saveReportSettings(settings)
     }
 
+    suspend fun getActiveAcademicYear(): String? {
+        return academicYearDao?.getActiveAcademicYear()?.firstOrNull()?.yearCode
+    }
+
     suspend fun saveTeacherComment(comment: com.example.data.local.entity.TeacherCommentEntity) {
         holisticDao.insertOrUpdateTeacherComment(comment)
     }

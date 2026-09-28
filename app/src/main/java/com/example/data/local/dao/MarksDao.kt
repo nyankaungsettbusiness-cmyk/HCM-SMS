@@ -42,6 +42,9 @@ interface MarksDao {
     @Query("SELECT * FROM student_marks")
     fun getAllMarks(): Flow<List<StudentMarkEntity>>
 
+    @Query("SELECT * FROM student_marks")
+    suspend fun getAllMarksSync(): List<StudentMarkEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateMarks(marks: List<StudentMarkEntity>)
 
