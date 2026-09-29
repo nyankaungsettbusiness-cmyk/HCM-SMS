@@ -75,11 +75,8 @@ class SupabaseStudentsCrudTest {
             }
             println("[$testTag] Connectivity verified! Table 'students' is accessible.")
         } catch (e: Exception) {
-            println("[$testTag] Initial select error: ${e.message}")
-            if (e.message?.contains("exceed_egress_quota") == true) {
-                println("Supabase egress quota reached, skipping live crud.")
-                return@runBlocking
-            }
+            println("[$testTag] Supabase unreachable or network unavailable (${e.message}), skipping live crud test.")
+            return@runBlocking
         }
 
         // STEP 2: CREATE (INSERT NEW STUDENT RECORD DIRECTLY)

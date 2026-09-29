@@ -323,6 +323,30 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE student_marks ADD COLUMN questionMarksJson TEXT DEFAULT NULL")
+                } catch (e: Exception) {
+                    // Ignored if column already exists
+                }
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS exam_question_blueprints (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        gradeName TEXT NOT NULL,
+                        subjectName TEXT NOT NULL,
+                        totalMarks INTEGER NOT NULL DEFAULT 100,
+                        questionsJson TEXT NOT NULL DEFAULT '[]',
+                        updatedAt INTEGER NOT NULL DEFAULT 0,
+                        uuid TEXT NOT NULL DEFAULT '',
+                        isDirty INTEGER NOT NULL DEFAULT 0,
+                        isDeleted INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_exam_question_blueprints_gradeName_subjectName ON exam_question_blueprints(gradeName, subjectName)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -330,7 +354,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "hcm_sms_database.db"
                 )
-                    .addMigrations(MIGRATION_15_16, MIGRATION_17_18, MIGRATION_19_20, MIGRATION_20_21)
+                    .addMigrations(MIGRATION_15_16, MIGRATION_17_18, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
                     .addCallback(DatabaseCallback(context.applicationContext))
                     .fallbackToDestructiveMigration()
                     .build()
@@ -405,14 +429,8 @@ abstract class AppDatabase : RoomDatabase() {
                         dbWriter.execSQL("UPDATE assessment_periods SET uuid = lower(hex(randomblob(16))) WHERE uuid = '' OR uuid IS NULL")
                         dbWriter.execSQL("UPDATE holistic_categories SET uuid = lower(hex(randomblob(16))) WHERE uuid = '' OR uuid IS NULL")
                         dbWriter.execSQL("UPDATE sgi_categories SET uuid = lower(hex(randomblob(16))) WHERE uuid = '' OR uuid IS NULL")
-                        dbWriter.execSQL("UPDATE grades SET isDirty = 0 WHERE isDirty = 1 AND isDeleted = 0")
-                        dbWriter.execSQL("UPDATE school_classes SET isDirty = 0 WHERE isDirty = 1 AND isDeleted = 0")
-                        dbWriter.execSQL("UPDATE subjects SET isDirty = 0 WHERE isDirty = 1 AND isDeleted = 0")
-                        dbWriter.execSQL("UPDATE school_settings SET isDirty = 0 WHERE isDirty = 1")
-                        dbWriter.execSQL("UPDATE academic_years SET isDirty = 0 WHERE isDirty = 1")
-                        dbWriter.execSQL("UPDATE holistic_categories SET isDirty = 0 WHERE isDirty = 1 AND isDeleted = 0")
-                        dbWriter.execSQL("UPDATE sgi_categories SET isDirty = 0 WHERE isDirty = 1 AND isDeleted = 0")
-                        dbWriter.execSQL("UPDATE users SET isDirty = 0 WHERE isDirty = 1 AND isDeleted = 0")
+                        // Ensure local school_settings defaults have updatedAt = 0 so that cloud sync will immediately overwrite with real user data from Supabase
+                        dbWriter.execSQL("UPDATE school_settings SET updatedAt = 0 WHERE (schoolName IN ('Hein Chan Myae', 'Hein Chan Myae Private School') OR address IN ('Yangon, Myanmar', 'No. 123, Pyay Road, Kamayut, Yangon')) AND isDirty = 0")
                     } catch (sqlEx: Exception) {
                         // Safe ignore if tables are in creation
                     }
@@ -465,7 +483,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
 
-            // 2. School Settings
+            // 2. School Settings (updatedAt = 0 so that remote Supabase data is always considered newer upon sync)
             policyDao.updateSchoolSettings(
                 SchoolSettingEntity(
                     id = 1,
@@ -474,7 +492,9 @@ abstract class AppDatabase : RoomDatabase() {
                     contactPhone = "+95 9 790001122",
                     email = "contact@heinchanmyae.edu.mm",
                     address = "No. 123, Pyay Road, Kamayut, Yangon",
-                    logoText = "HCM-SMS"
+                    logoText = "HCM-SMS",
+                    updatedAt = 0L,
+                    isDirty = false
                 )
             )
 

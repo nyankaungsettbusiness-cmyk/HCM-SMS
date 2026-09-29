@@ -216,15 +216,19 @@ class AiSecurityAndDataToolsBridgeTest {
             override suspend fun getAssessmentResultByUuid(uuid: String): AssessmentResultSummaryEntity? = null
             override suspend fun markAssessmentResultSynced(id: Long, uuid: String) {}
             override fun getAllAssessmentResults(): Flow<List<AssessmentResultSummaryEntity>> = flowOf(emptyList())
+            override fun getAssessmentResultsForStudent(studentId: Long): Flow<List<AssessmentResultSummaryEntity>> = flowOf(emptyList())
+            override fun getMarksForStudent(studentId: Long): Flow<List<StudentMarkEntity>> = flowOf(marks.filter { it.studentId == studentId })
             override suspend fun insertOrUpdateResultSummary(summary: AssessmentResultSummaryEntity) {}
             override suspend fun insertOrUpdateResultSummaries(summaries: List<AssessmentResultSummaryEntity>) {}
             override suspend fun getStudentMarksForSync(limit: Int): List<StudentMarkEntity> = emptyList()
             override suspend fun getStudentMarkByUuid(uuid: String): StudentMarkEntity? = null
             override suspend fun markStudentMarkSynced(id: Long, uuid: String) {}
+            override suspend fun getAllMarksSync(): List<StudentMarkEntity> = marks
         }
 
         val fakeAttendanceDao = object : AttendanceDao {
             override fun getAllAttendanceRecords(): Flow<List<AttendanceRecordEntity>> = flowOf(attendance)
+            override suspend fun getAllAttendanceRecordsSync(): List<AttendanceRecordEntity> = attendance
             override fun getAttendanceForDate(date: String): Flow<List<AttendanceRecordEntity>> = flowOf(attendance.filter { it.date == date })
             override fun getAttendanceForStudent(studentId: Long, academicYear: String): Flow<List<AttendanceRecordEntity>> = flowOf(attendance.filter { it.studentId == studentId && it.academicYear == academicYear })
             override suspend fun getAttendanceListForStudentSync(studentId: Long, academicYear: String): List<AttendanceRecordEntity> = attendance.filter { it.studentId == studentId && it.academicYear == academicYear }
@@ -281,6 +285,7 @@ class AiSecurityAndDataToolsBridgeTest {
             override suspend fun deleteHolisticCategory(category: HolisticCategoryEntity) {}
             override suspend fun deleteHolisticCategoriesForLevel(targetLevel: String) {}
             override fun getHolisticResultsForStudent(studentId: Long, period: String, academicYear: String): Flow<List<HolisticResultEntity>> = flowOf(emptyList())
+            override fun getHolisticResultsForStudentAllPeriods(studentId: Long, academicYear: String): Flow<List<HolisticResultEntity>> = flowOf(emptyList())
             override suspend fun getHolisticResultsForSync(limit: Int): List<HolisticResultEntity> = emptyList()
             override suspend fun getHolisticResultByUuid(uuid: String): HolisticResultEntity? = null
             override suspend fun markHolisticResultSynced(id: Long, uuid: String) {}
@@ -306,6 +311,7 @@ class AiSecurityAndDataToolsBridgeTest {
             override suspend fun getTeacherCommentByUuid(uuid: String): TeacherCommentEntity? = null
             override suspend fun markTeacherCommentSynced(id: Long, uuid: String) {}
             override fun getTeacherCommentForStudent(studentId: Long, period: String, academicYear: String): Flow<TeacherCommentEntity?> = flowOf(null)
+            override fun getTeacherCommentsForStudent(studentId: Long, academicYear: String): Flow<List<TeacherCommentEntity>> = flowOf(emptyList())
             override suspend fun insertOrUpdateTeacherComment(comment: TeacherCommentEntity) {}
         }
 
@@ -334,6 +340,7 @@ class AiSecurityAndDataToolsBridgeTest {
             override suspend fun insertClass(schoolClass: SchoolClassEntity): Long = 0L
             override suspend fun deleteClass(classId: Long) {}
             override fun getAllSubjects(): Flow<List<SubjectEntity>> = flowOf(emptyList())
+            override suspend fun getAllSubjectsSync(): List<SubjectEntity> = emptyList()
             override fun getSubjectsByCategory(category: SubjectCategory): Flow<List<SubjectEntity>> = flowOf(emptyList())
             override suspend fun getSubjectsForSync(): List<SubjectEntity> = emptyList()
             override suspend fun getSubjectByUuid(uuid: String): SubjectEntity? = null
@@ -361,6 +368,8 @@ class AiSecurityAndDataToolsBridgeTest {
             override suspend fun insertCustomExam(exam: CustomExamEntity): Long = 0L
             override suspend fun deleteCustomExam(id: Long) {}
             override fun getAllGradingPolicies(): Flow<List<GradingPolicyEntity>> = flowOf(emptyList())
+            override suspend fun getAllGradingPoliciesSync(): List<GradingPolicyEntity> = emptyList()
+            override suspend fun getGradingPolicyForSubject(level: EducationLevel, subject: String): GradingPolicyEntity? = null
             override suspend fun getGradingPoliciesForSync(): List<GradingPolicyEntity> = emptyList()
             override suspend fun getGradingPolicyByUuid(uuid: String): GradingPolicyEntity? = null
             override suspend fun markGradingPolicySynced(id: Long, uuid: String) {}

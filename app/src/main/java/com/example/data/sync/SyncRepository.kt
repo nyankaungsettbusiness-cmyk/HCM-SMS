@@ -959,8 +959,17 @@ class SyncRepository(
                     }
                 }
                 val remoteEntity = remoteDto.toEntity(existingLocalId = local?.id ?: 1)
-                if (local == null || (!local.isDirty && remoteEntity.updatedAt > local.updatedAt)) {
-                    Log.d("AcademicYearTrace", "SYNC_PULL_SETTINGS_UPDATE: Updating local school_settings from remote: remoteAcademicYear=${remoteEntity.academicYear}")
+                val isDefaultPlaceholder = local == null ||
+                    local.schoolName == "Hein Chan Myae Private School" ||
+                    local.schoolName == "Hein Chan Myae" ||
+                    local.address == "No. 123, Pyay Road, Kamayut, Yangon" ||
+                    local.address == "Yangon, Myanmar" ||
+                    local.updatedAt == 0L ||
+                    local.uuid.isBlank() ||
+                    local.uuid != remoteEntity.uuid
+
+                if (local == null || !local.isDirty || isDefaultPlaceholder || remoteEntity.updatedAt >= local.updatedAt) {
+                    Log.d("AcademicYearTrace", "SYNC_PULL_SETTINGS_UPDATE: Updating local school_settings from remote: remoteSchoolName=${remoteEntity.schoolName}, remoteAcademicYear=${remoteEntity.academicYear}")
                     val entityToApply = if (currentActiveYear != null && remoteEntity.academicYear != currentActiveYear.yearCode) {
                         remoteEntity.copy(academicYear = currentActiveYear.yearCode)
                     } else {
