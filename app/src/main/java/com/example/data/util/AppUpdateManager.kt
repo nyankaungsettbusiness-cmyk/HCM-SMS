@@ -64,10 +64,48 @@ object AppUpdateManager {
     private val _downloadProgress = MutableStateFlow<DownloadProgressState>(DownloadProgressState.Idle)
     val downloadProgress: StateFlow<DownloadProgressState> = _downloadProgress.asStateFlow()
 
+    var activeDownloadId: Long? = null
+        private set
+    var activeDownloadedFileName: String? = null
+        private set
+
     fun resetDownloadState() {
         progressPollingJob?.cancel()
         progressPollingJob = null
         _downloadProgress.value = DownloadProgressState.Idle
+    }
+
+    fun hasUnknownSourcesPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                context.packageManager.canRequestPackageInstalls()
+            } catch (e: Exception) {
+                true
+            }
+        } else {
+            true
+        }
+    }
+
+    fun requestUnknownSourcesPermission(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val intent = Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${context.packageName}")
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                try {
+                    val fallbackIntent = Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(fallbackIntent)
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     /**
@@ -170,29 +208,23 @@ object AppUpdateManager {
         try {
             if (apkUrl.isBlank()) return
 
-            // Check if unknown app sources permission is granted (Android 8.0+)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (!context.packageManager.canRequestPackageInstalls()) {
-                    val manageIntent = Intent(
-                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:${context.packageName}")
-                    ).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    try {
-                        context.startActivity(manageIntent)
-                        android.widget.Toast.makeText(
-                            context,
-                            "Please allow 'Install unknown apps' for HCM-SMS, then tap Update again.",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    } catch (_: Exception) {}
-                }
+            // Proactively verify / prompt Unknown App Sources permission (Android 8.0+)
+            if (!hasUnknownSourcesPermission(context)) {
+                requestUnknownSourcesPermission(context)
+                try {
+                    android.widget.Toast.makeText(
+                        context,
+                        "ကျေးဇူးပြု၍ HCM-SMS အတွက် 'Allow from this source' (ပြင်ပ App သွင်းခွင့်) ခွင့်ပြုပေးပါ",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                } catch (_: Exception) {}
             }
 
             val fileName = "HCM_SMS_v${versionName.replace(' ', '_')}.apk"
-            val targetFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
-            if (targetFile.exists() && targetFile.length() > 1024 * 1024) {
+            activeDownloadedFileName = fileName
+            val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            val targetFile = if (downloadsDir != null) File(downloadsDir, fileName) else null
+            if (targetFile != null && targetFile.exists() && targetFile.length() > 1024 * 1024) {
                 // If the APK was already downloaded, report complete and install directly
                 val fileSizeMb = String.format(Locale.US, "%.1f MB", targetFile.length() / (1024.0 * 1024.0))
                 _downloadProgress.value = DownloadProgressState.Downloading(
@@ -231,6 +263,7 @@ object AppUpdateManager {
             }
 
             val downloadId = downloadManager.enqueue(request)
+            activeDownloadId = downloadId
 
             // Start polling progress every 250ms
             progressPollingJob?.cancel()
@@ -299,6 +332,8 @@ object AppUpdateManager {
                                             totalMb = finalMb,
                                             statusText = "Download complete (100%). Launching installer..."
                                         )
+                                        _downloadProgress.value = DownloadProgressState.Installing(fileName)
+                                        installDownloadedApk(context, fileName, downloadId)
                                     }
                                     DownloadManager.STATUS_PAUSED -> {
                                         _downloadProgress.value = DownloadProgressState.Downloading(
@@ -338,7 +373,7 @@ object AppUpdateManager {
                         } catch (_: Exception) {}
 
                         _downloadProgress.value = DownloadProgressState.Installing(fileName)
-                        installDownloadedApk(ctxt, fileName)
+                        installDownloadedApk(ctxt, fileName, downloadId)
                     }
                 }
             }
@@ -376,33 +411,112 @@ object AppUpdateManager {
         }
     }
 
-    fun installDownloadedApk(context: Context, fileName: String) {
+    fun installDownloadedApk(context: Context, fileName: String? = null, downloadId: Long? = null) {
         try {
-            val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
-            if (!file.exists()) {
-                Log.w(TAG, "Downloaded file does not exist: ${file.absolutePath}")
+            // 1. Verify and request Unknown App Sources permission if needed
+            if (!hasUnknownSourcesPermission(context)) {
+                try {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Installer ဖွင့်ရန် 'Allow from this source' (ပြင်ပ App သွင်းခွင့်) ခွင့်ပြုပေးပါ",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                } catch (_: Exception) {}
+                requestUnknownSourcesPermission(context)
                 return
             }
 
-            val apkUri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
+            // 2. Resolve target APK file in app downloads directory
+            val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            var targetFile: File? = null
 
+            val nameToLookFor = fileName ?: activeDownloadedFileName
+            if (!nameToLookFor.isNullOrBlank() && downloadsDir != null) {
+                val candidate = File(downloadsDir, nameToLookFor)
+                if (candidate.exists() && candidate.length() > 1024 * 50) {
+                    targetFile = candidate
+                }
+            }
+
+            // Smart fallback: Search for newest valid .apk in downloads folder
+            if (targetFile == null && downloadsDir != null) {
+                val apkFiles = downloadsDir.listFiles { f ->
+                    f.isFile && f.name.endsWith(".apk", ignoreCase = true) && f.length() > 1024 * 50
+                }
+                targetFile = apkFiles?.maxByOrNull { it.lastModified() }
+            }
+
+            // 3. Try Dual-Path URI Resolution:
+            var installUri: Uri? = null
+            val effectiveDownloadId = downloadId ?: activeDownloadId
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+
+            // Path A: Prefer DownloadManager's Content URI if available
+            if (effectiveDownloadId != null && effectiveDownloadId > 0 && downloadManager != null) {
+                try {
+                    val dmUri = downloadManager.getUriForDownloadedFile(effectiveDownloadId)
+                    if (dmUri != null) {
+                        installUri = dmUri
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "DownloadManager getUriForDownloadedFile note: ${e.message}")
+                }
+            }
+
+            // Path B: Fallback to FileProvider URI with explicit grant
+            if (installUri == null && targetFile != null && targetFile.exists()) {
+                installUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    targetFile
+                )
+            }
+
+            if (installUri == null) {
+                Log.w(TAG, "No valid APK URI or file found to install")
+                try {
+                    android.widget.Toast.makeText(
+                        context,
+                        "APK ဖိုင် မတွေ့ရှိသေးပါ (သို့မဟုတ် ဒေါင်းလုဒ်မပြီးသေးပါ)။ ကျေးဇူးပြု၍ ဒေါင်းလုဒ်ပြီးဆုံးအောင် စောင့်ပါ",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                } catch (_: Exception) {}
+                return
+            }
+
+            // 4. Construct and configure Package Installer Intent
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                setDataAndType(installUri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
             }
+
+            // 5. Explicitly grant URI read permissions to all candidate installer packages
+            val resolvedActivities = try {
+                context.packageManager.queryIntentActivities(installIntent, 0)
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            for (resolveInfo in resolvedActivities) {
+                val packageName = resolveInfo.activityInfo.packageName
+                try {
+                    context.grantUriPermission(packageName, installUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (e: Exception) {
+                    Log.w(TAG, "grantUriPermission for $packageName: ${e.message}")
+                }
+            }
+
             context.startActivity(installIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch package installer", e)
             try {
                 android.widget.Toast.makeText(
                     context,
-                    "Installer could not open automatically. Opening file in browser / files app...",
+                    "Installer တိုက်ရိုက်မပွင့်ပါက Notification Bar သို့မဟုတ် Files app မှ ထည့်သွင်းနိုင်ပါသည်",
                     android.widget.Toast.LENGTH_LONG
                 ).show()
             } catch (_: Exception) {}

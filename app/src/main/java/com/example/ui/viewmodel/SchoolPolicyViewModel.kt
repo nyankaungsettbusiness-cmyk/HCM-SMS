@@ -52,6 +52,21 @@ class SchoolPolicyViewModel(private val repository: SchoolPolicyRepository) : Vi
         initialValue = emptyList()
     )
 
+    val allExamBlueprints: StateFlow<List<ExamQuestionBlueprintEntity>> = repository.allExamBlueprints.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val selectedBlueprintGrade = MutableStateFlow("G12")
+
+    val blueprintsForSelectedGrade: StateFlow<List<ExamQuestionBlueprintEntity>> = combine(
+        allExamBlueprints,
+        selectedBlueprintGrade
+    ) { list, grade ->
+        list.filter { it.gradeName.equals(grade, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun updateSchoolSettings(schoolName: String, academicYear: String, phone: String, email: String, address: String) {
         android.util.Log.d("AcademicYearDebug", "VM_CALL: SchoolPolicyViewModel.updateSchoolSettings called for year='$academicYear'")
         viewModelScope.launch {
@@ -185,6 +200,31 @@ class SchoolPolicyViewModel(private val repository: SchoolPolicyRepository) : Vi
     fun deleteGradingPolicy(id: Long) {
         viewModelScope.launch {
             repository.deleteGradingPolicy(id)
+        }
+    }
+
+    fun saveExamBlueprint(gradeName: String, subjectName: String, questions: List<QuestionBlueprintItem>) {
+        viewModelScope.launch {
+            val total = questions.sumOf { it.maxMark }.toInt()
+            val entity = ExamQuestionBlueprintEntity(
+                gradeName = gradeName,
+                subjectName = subjectName,
+                totalMarks = total,
+                questionsJson = com.example.data.policy.ExamQuestionBlueprintHelper.serializeQuestions(questions)
+            )
+            repository.saveBlueprint(entity)
+        }
+    }
+
+    fun deleteExamBlueprint(id: Long) {
+        viewModelScope.launch {
+            repository.deleteBlueprint(id)
+        }
+    }
+
+    fun resetToDefaultBlueprints(gradeName: String) {
+        viewModelScope.launch {
+            repository.resetToDefaultBlueprintsForGrade(gradeName)
         }
     }
 }

@@ -13,8 +13,21 @@ import kotlinx.coroutines.flow.firstOrNull
 class MarksRepository(
     private val marksDao: MarksDao,
     private val studentDao: StudentDao,
-    private val schoolPolicyDao: SchoolPolicyDao
+    private val schoolPolicyDao: SchoolPolicyDao,
+    private val examQuestionBlueprintDao: com.example.data.local.dao.ExamQuestionBlueprintDao? = null
 ) {
+
+    fun getQuestionBlueprintFlow(gradeName: String, subjectName: String): Flow<com.example.data.local.entity.ExamQuestionBlueprintEntity?> {
+        return examQuestionBlueprintDao?.getBlueprintFlow(gradeName, subjectName) ?: kotlinx.coroutines.flow.flowOf(null)
+    }
+
+    fun getBlueprintsForGrade(gradeName: String): Flow<List<com.example.data.local.entity.ExamQuestionBlueprintEntity>> {
+        return examQuestionBlueprintDao?.getBlueprintsForGrade(gradeName) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+
+    suspend fun getQuestionBlueprint(gradeName: String, subjectName: String): com.example.data.local.entity.ExamQuestionBlueprintEntity? {
+        return examQuestionBlueprintDao?.getBlueprint(gradeName, subjectName)
+    }
 
     fun getAllSubjects(): Flow<List<com.example.data.local.entity.SubjectEntity>> {
         return schoolPolicyDao.getAllSubjects()

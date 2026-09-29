@@ -74,9 +74,10 @@ import kotlinx.coroutines.launch
         LoginHistoryEntity::class,
         SecurityPolicyEntity::class,
         SyncOutboxEntity::class,
-        SyncMetadataEntity::class
+        SyncMetadataEntity::class,
+        ExamQuestionBlueprintEntity::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -99,6 +100,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun aiChatDao(): AiChatDao
     abstract fun syncOutboxDao(): com.example.data.local.dao.SyncOutboxDao
     abstract fun syncMetadataDao(): com.example.data.local.dao.SyncMetadataDao
+    abstract fun examQuestionBlueprintDao(): com.example.data.local.dao.ExamQuestionBlueprintDao
 
     companion object {
         @Volatile

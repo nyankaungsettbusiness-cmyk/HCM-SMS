@@ -370,11 +370,36 @@ data class StudentMarkEntity(
     val isPassed: Boolean = false,
     val isDistinction: Boolean = false,
     val remarks: String = "",
+    val questionMarksJson: String? = null, // JSON breakdown e.g. {"Q1": 18.0, "Q2": 15.0}
     val updatedAt: Long = System.currentTimeMillis(),
     val updatedBy: String = "Teacher",
     val uuid: String = "",
     val isDirty: Boolean = false,
     val isDeleted: Boolean = false
+)
+
+@Entity(
+    tableName = "exam_question_blueprints",
+    indices = [
+        Index(value = ["gradeName", "subjectName"], unique = true)
+    ]
+)
+data class ExamQuestionBlueprintEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val gradeName: String, // "G10", "G11", "G12"
+    val subjectName: String,
+    val totalMarks: Int = 100,
+    val questionsJson: String = "[]", // JSON array of items: [{"qNo":"Q1","title":"Grammar","maxMark":20.0},...]
+    val updatedAt: Long = System.currentTimeMillis(),
+    val uuid: String = "",
+    val isDirty: Boolean = false,
+    val isDeleted: Boolean = false
+)
+
+data class QuestionBlueprintItem(
+    val qNo: String,
+    val title: String = "",
+    val maxMark: Double = 10.0
 )
 
 @Entity(

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.*
+import com.example.data.policy.ExamQuestionBlueprintHelper
 import com.example.ui.viewmodel.AuthViewModel
 import com.example.ui.viewmodel.SchoolPolicyViewModel
 
@@ -80,7 +81,8 @@ fun SchoolPolicyCenterScreen(
     val tabTitles = listOf(
         "Grades & Classes",
         "Subjects",
-        "Grading Policy"
+        "Grading Policy",
+        "Exam Blueprints (G10-G12)"
     )
 
     Column(
@@ -145,6 +147,7 @@ fun SchoolPolicyCenterScreen(
                 0 -> GradeConfigTab(policyViewModel)
                 1 -> SubjectConfigTab(policyViewModel)
                 2 -> GradingPolicyTab(policyViewModel)
+                3 -> ExamBlueprintsTab(policyViewModel)
             }
         }
     }
@@ -1002,4 +1005,539 @@ fun GradingPolicyTab(viewModel: SchoolPolicyViewModel) {
         )
     }
 }
+
+// -------------------------------------------------------------
+// 4. Exam Question Blueprints Tab (G10 - G12 Admin Configurable)
+// -------------------------------------------------------------
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExamBlueprintsTab(viewModel: SchoolPolicyViewModel) {
+    val selectedGrade by viewModel.selectedBlueprintGrade.collectAsState()
+    val blueprints by viewModel.blueprintsForSelectedGrade.collectAsState()
+
+    var blueprintToEdit by remember { mutableStateOf<ExamQuestionBlueprintEntity?>(null) }
+    var showAddBlueprintDialog by remember { mutableStateOf(false) }
+    var showResetConfirmDialog by remember { mutableStateOf(false) }
+
+    val highSchoolGrades = listOf("G10", "G11", "G12")
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Header & Controls
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "မေးခွန်းနံပါတ် သတ်မှတ်ချက်များ (Exam Question Blueprints)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Grade 10, 11, 12 ဘာသာရပ်အလိုက် မေးခွန်းနံပါတ်၊ အကြောင်းအရာနှင့် အမှတ်အများဆုံးကို လိုသလို ပြင်ဆင်သတ်မှတ်နိုင်သည်",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = { showResetConfirmDialog = true },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Reset Preset", fontSize = 11.sp)
+                        }
+
+                        Button(
+                            onClick = { showAddBlueprintDialog = true },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("New Subject", fontSize = 11.sp)
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // Grade Selector Chips
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Grade ရွေးချယ်ရန်:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    highSchoolGrades.forEach { g ->
+                        FilterChip(
+                            selected = selectedGrade.equals(g, ignoreCase = true),
+                            onClick = { viewModel.selectedBlueprintGrade.value = g },
+                            label = { Text(g, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                            leadingIcon = if (selectedGrade.equals(g, ignoreCase = true)) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                            } else null,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // List of Blueprints for Selected Grade
+        if (blueprints.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "$selectedGrade အတွက် မေးခွန်းပုံစံများ မရှိသေးပါ",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                    Button(
+                        onClick = { viewModel.resetToDefaultBlueprints(selectedGrade) },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("မြန်မာသင်ရိုးစံ မေးခွန်းပုံစံများ ထည့်သွင်းမည် (Seed Defaults)")
+                    }
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(blueprints, key = { it.id }) { blueprint ->
+                    val questions = remember(blueprint.questionsJson) {
+                        ExamQuestionBlueprintHelper.parseQuestions(blueprint.questionsJson)
+                    }
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Subject Title & Actions
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        modifier = Modifier.padding(2.dp)
+                                    ) {
+                                        Text(
+                                            text = blueprint.gradeName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+
+                                    Text(
+                                        text = blueprint.subjectName,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.secondaryContainer
+                                    ) {
+                                        Text(
+                                            text = "စုစုပေါင်း: ${blueprint.totalMarks} မှတ်",
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    IconButton(
+                                        onClick = { blueprintToEdit = blueprint },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.deleteExamBlueprint(blueprint.id) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                            // Question Items List
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                questions.forEach { item ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                                shape = RoundedCornerShape(6.dp)
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = item.qNo,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+
+                                            Text(
+                                                text = item.title.ifBlank { "မေးခွန်း ${item.qNo}" },
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+
+                                        Text(
+                                            text = "${item.maxMark.toInt()} မှတ်",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Dialog: Edit Blueprint Questions
+    blueprintToEdit?.let { bp ->
+        EditBlueprintQuestionsDialog(
+            blueprint = bp,
+            onDismiss = { blueprintToEdit = null },
+            onSave = { updatedQuestions ->
+                viewModel.saveExamBlueprint(bp.gradeName, bp.subjectName, updatedQuestions)
+                blueprintToEdit = null
+            }
+        )
+    }
+
+    // Dialog: Add Custom Blueprint
+    if (showAddBlueprintDialog) {
+        AddCustomBlueprintDialog(
+            gradeName = selectedGrade,
+            onDismiss = { showAddBlueprintDialog = false },
+            onAdd = { subjectName, questions ->
+                viewModel.saveExamBlueprint(selectedGrade, subjectName, questions)
+                showAddBlueprintDialog = false
+            }
+        )
+    }
+
+    // Dialog: Confirm Reset to Defaults
+    if (showResetConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirmDialog = false },
+            title = { Text("Reset to Standard Myanmar Presets") },
+            text = { Text("$selectedGrade အတွက် စံမေးခွန်းပုံစံများကို နဂိုမူလအတိုင်း ပြန်လည်သတ်မှတ်မည် သေချာပါသလား?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.resetToDefaultBlueprints(selectedGrade)
+                        showResetConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) { Text("သေချာပါသည် (Reset)") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showResetConfirmDialog = false }) { Text("မလုပ်တော့ပါ") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun EditBlueprintQuestionsDialog(
+    blueprint: ExamQuestionBlueprintEntity,
+    onDismiss: () -> Unit,
+    onSave: (List<QuestionBlueprintItem>) -> Unit
+) {
+    val initialQuestions = remember(blueprint) {
+        val parsed = ExamQuestionBlueprintHelper.parseQuestions(blueprint.questionsJson)
+        if (parsed.isNotEmpty()) parsed else ExamQuestionBlueprintHelper.getDefaultQuestionsForSubject(blueprint.subjectName)
+    }
+
+    var questions by remember { mutableStateOf(initialQuestions) }
+
+    val totalMaxMark = questions.sumOf { it.maxMark }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = "${blueprint.gradeName} - ${blueprint.subjectName} မေးခွန်းများ ပြင်ဆင်ခြင်း",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "စုစုပေါင်းအမှတ်: ${totalMaxMark.toInt()} မှတ်",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("မေးခွန်းအလိုက် အချက်အလက်များ:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    TextButton(
+                        onClick = {
+                            val nextNo = "Q${questions.size + 1}"
+                            questions = questions + QuestionBlueprintItem(nextNo, "Section ${questions.size + 1}", 20.0)
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("+ မေးခွန်းအသစ်ထည့်", fontSize = 12.sp)
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(questions.size) { idx ->
+                        val item = questions[idx]
+                        var qNoText by remember(item.qNo) { mutableStateOf(item.qNo) }
+                        var titleText by remember(item.title) { mutableStateOf(item.title) }
+                        var markText by remember(item.maxMark) { mutableStateOf(item.maxMark.toInt().toString()) }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                // Q No
+                                OutlinedTextField(
+                                    value = qNoText,
+                                    onValueChange = {
+                                        qNoText = it
+                                        questions = questions.toMutableList().also { list ->
+                                            list[idx] = list[idx].copy(qNo = it)
+                                        }
+                                    },
+                                    label = { Text("No", fontSize = 10.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.width(60.dp),
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                )
+
+                                // Title
+                                OutlinedTextField(
+                                    value = titleText,
+                                    onValueChange = {
+                                        titleText = it
+                                        questions = questions.toMutableList().also { list ->
+                                            list[idx] = list[idx].copy(title = it)
+                                        }
+                                    },
+                                    label = { Text("Title / Section", fontSize = 10.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 12.sp)
+                                )
+
+                                // Max Mark
+                                OutlinedTextField(
+                                    value = markText,
+                                    onValueChange = {
+                                        markText = it
+                                        val num = it.toDoubleOrNull() ?: 0.0
+                                        questions = questions.toMutableList().also { list ->
+                                            list[idx] = list[idx].copy(maxMark = num)
+                                        }
+                                    },
+                                    label = { Text("Max", fontSize = 10.sp) },
+                                    singleLine = true,
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                    modifier = Modifier.width(65.dp),
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                )
+
+                                // Delete
+                                IconButton(
+                                    onClick = {
+                                        questions = questions.toMutableList().also { it.removeAt(idx) }
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(questions) },
+                enabled = questions.isNotEmpty()
+            ) {
+                Text("သိမ်းဆည်းမည် (Save)")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) { Text("မလုပ်တော့ပါ") }
+        }
+    )
+}
+
+@Composable
+private fun AddCustomBlueprintDialog(
+    gradeName: String,
+    onDismiss: () -> Unit,
+    onAdd: (String, List<QuestionBlueprintItem>) -> Unit
+) {
+    var subjectName by remember { mutableStateOf("") }
+    val defaultQuestions = remember(subjectName) {
+        if (subjectName.isNotBlank()) ExamQuestionBlueprintHelper.getDefaultQuestionsForSubject(subjectName)
+        else listOf(
+            QuestionBlueprintItem("Q1", "Section A", 20.0),
+            QuestionBlueprintItem("Q2", "Section B", 20.0),
+            QuestionBlueprintItem("Q3", "Section C", 20.0),
+            QuestionBlueprintItem("Q4", "Section D", 20.0),
+            QuestionBlueprintItem("Q5", "Section E", 20.0)
+        )
+    }
+
+    var questions by remember { mutableStateOf(defaultQuestions) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("$gradeName အတွက် ဘာသာရပ်မေးခွန်းပုံစံ အသစ်ထည့်ခြင်း", fontSize = 15.sp) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = subjectName,
+                    onValueChange = {
+                        subjectName = it
+                        questions = ExamQuestionBlueprintHelper.getDefaultQuestionsForSubject(it)
+                    },
+                    label = { Text("ဘာသာရပ် အမည် (Subject Name)") },
+                    placeholder = { Text("e.g. Physics, History, Computing") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    text = "သတ်မှတ်ထားသော မေးခွန်းများ (${questions.size} ခု - စုစုပေါင်း ${questions.sumOf { it.maxMark }.toInt()} မှတ်)",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (subjectName.isNotBlank()) {
+                        onAdd(subjectName.trim(), questions)
+                    }
+                },
+                enabled = subjectName.isNotBlank()
+            ) {
+                Text("ထည့်သွင်းမည် (Add)")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) { Text("မလုပ်တော့ပါ") }
+        }
+    )
+}
+
 

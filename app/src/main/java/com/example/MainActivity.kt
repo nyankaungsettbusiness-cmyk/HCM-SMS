@@ -17,7 +17,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -81,8 +83,16 @@ class MainActivity : ComponentActivity() {
 
         val db = AppDatabase.getInstance(applicationContext)
         val authRepo = AuthRepository(db.userDao())
-        val policyRepo = SchoolPolicyRepository(db.schoolPolicyDao(), db.academicYearDao())
+        val policyRepo = SchoolPolicyRepository(db.schoolPolicyDao(), db.academicYearDao(), db.examQuestionBlueprintDao())
         val studentRepo = StudentRepository(db.studentDao(), applicationContext)
+
+        lifecycleScope.launch {
+            try {
+                policyRepo.seedDefaultBlueprintsIfEmpty()
+            } catch (e: Exception) {
+                android.util.Log.w("MainActivity", "Seed blueprints note: ${e.message}")
+            }
+        }
 
         // Initialize Smart On-Demand Sync & FCM Token on app launch
         SyncManager.init(applicationContext)
@@ -103,7 +113,7 @@ class MainActivity : ComponentActivity() {
         }
         val teacherRepo = TeacherRepository(db.teacherDao(), authRepo)
         val assessmentRepo = AssessmentRepository(db.assessmentDao())
-        val marksRepo = MarksRepository(db.marksDao(), db.studentDao(), db.schoolPolicyDao())
+        val marksRepo = MarksRepository(db.marksDao(), db.studentDao(), db.schoolPolicyDao(), db.examQuestionBlueprintDao())
         val holisticRepo = HolisticRepository(db.holisticDao(), db.assessmentPeriodDao())
         val attendanceRepo = AttendanceRepository(db.attendanceDao(), db.studentDao())
         val academicYearRepo = AcademicYearRepository(db.academicYearDao(), db.studentDao(), db.schoolPolicyDao())
@@ -405,7 +415,8 @@ fun HcmMainApp(
                                 attendanceRepository = attendanceRepo,
                                 holisticRepository = holisticRepo,
                                 marksRepository = marksRepo,
-                                reportRepository = reportRepo
+                                reportRepository = reportRepo,
+                                assessmentRepository = assessmentRepo
                             )
                         }
 

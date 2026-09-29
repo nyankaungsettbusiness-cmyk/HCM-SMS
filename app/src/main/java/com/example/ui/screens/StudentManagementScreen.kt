@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -40,12 +41,23 @@ import com.example.data.local.entity.HolisticResultEntity
 import com.example.data.local.entity.TeacherCommentEntity
 import com.example.data.local.entity.AssessmentResultSummaryEntity
 import com.example.data.local.entity.ReportGenerationHistoryEntity
+import com.example.data.local.entity.StudentMarkEntity
+import com.example.data.local.entity.AssessmentEntity
+import com.example.data.local.entity.ExamQuestionBlueprintEntity
+import com.example.data.local.entity.QuestionBlueprintItem
 import com.example.data.repository.AttendanceRepository
 import com.example.data.repository.HolisticRepository
 import com.example.data.repository.MarksRepository
 import com.example.data.repository.ReportRepository
+import com.example.data.repository.AssessmentRepository
 import com.example.data.policy.SchoolPolicy
+import com.example.data.policy.ExamQuestionBlueprintHelper
 import com.example.ui.util.StudentPhotoUtils
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,7 +81,8 @@ fun StudentManagementScreen(
     attendanceRepository: AttendanceRepository? = null,
     holisticRepository: HolisticRepository? = null,
     marksRepository: MarksRepository? = null,
-    reportRepository: ReportRepository? = null
+    reportRepository: ReportRepository? = null,
+    assessmentRepository: AssessmentRepository? = null
 ) {
     val canDeleteStudent = currentUser?.role == com.example.data.local.entity.UserRole.SUPER_ADMIN ||
             currentUser?.role == com.example.data.local.entity.UserRole.ADMIN
@@ -435,6 +448,50 @@ fun StudentManagementScreen(
         }
     }
 
+    // Real Student Marks for the student currently being viewed
+    val studentMarks by produceState<List<StudentMarkEntity>>(
+        initialValue = emptyList(),
+        key1 = studentToViewDetail?.id
+    ) {
+        val currentStudent = studentToViewDetail
+        if (currentStudent != null && marksRepository != null) {
+            marksRepository.getMarksForStudent(currentStudent.id).collect {
+                value = it
+            }
+        } else {
+            value = emptyList()
+        }
+    }
+
+    // Question Blueprints for the student's grade
+    val gradeBlueprints by produceState<List<ExamQuestionBlueprintEntity>>(
+        initialValue = emptyList(),
+        key1 = studentToViewDetail?.gradeName
+    ) {
+        val currentStudent = studentToViewDetail
+        if (currentStudent != null && marksRepository != null) {
+            marksRepository.getBlueprintsForGrade(currentStudent.gradeName).collect {
+                value = it
+            }
+        } else {
+            value = emptyList()
+        }
+    }
+
+    // Assessments for the academic year
+    val allAssessments by produceState<List<AssessmentEntity>>(
+        initialValue = emptyList(),
+        key1 = academicYear
+    ) {
+        if (assessmentRepository != null) {
+            assessmentRepository.getAssessmentsForAcademicYear(academicYear).collect {
+                value = it
+            }
+        } else {
+            value = emptyList()
+        }
+    }
+
     // View Student Profile Detail Dialog
     studentToViewDetail?.let { student ->
         StudentDetailDialog(
@@ -446,6 +503,9 @@ fun StudentManagementScreen(
             teacherComments = studentTeacherComments,
             assessmentResults = studentAssessmentResults,
             reportHistory = studentReportHistory,
+            studentMarks = studentMarks,
+            assessments = allAssessments,
+            blueprints = gradeBlueprints,
             onEdit = {
                 studentToEdit = student
                 studentToViewDetail = null
@@ -1248,6 +1308,9 @@ fun StudentDetailDialog(
     teacherComments: List<TeacherCommentEntity> = emptyList(),
     assessmentResults: List<AssessmentResultSummaryEntity> = emptyList(),
     reportHistory: List<ReportGenerationHistoryEntity> = emptyList(),
+    studentMarks: List<StudentMarkEntity> = emptyList(),
+    assessments: List<AssessmentEntity> = emptyList(),
+    blueprints: List<ExamQuestionBlueprintEntity> = emptyList(),
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
@@ -1331,7 +1394,7 @@ fun StudentDetailDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 280.dp, max = 460.dp),
+                    .heightIn(min = 320.dp, max = 560.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ScrollableTabRow(
@@ -1357,7 +1420,13 @@ fun StudentDetailDialog(
                 ) {
                     when (selectedTab) {
                         0 -> ProfileAndParentTab(student)
-                        1 -> AcademicDataTab(student, academicYear)
+                        1 -> AcademicDataTab(
+                            student = student,
+                            academicYear = academicYear,
+                            studentMarks = studentMarks,
+                            assessments = assessments,
+                            blueprints = blueprints
+                        )
                         2 -> AttendanceDataTab(student, academicYear, attendanceRecords)
                         3 -> HcmHolisticTab(student, academicYear, holisticResults, teacherComments)
                         4 -> ReportInfoTab(student, academicYear, assessmentResults, reportHistory)
@@ -1439,8 +1508,31 @@ fun ProfileAndParentTab(student: StudentEntity) {
     }
 }
 
+data class SubjectQuestionBreakdownItem(
+    val qNo: String,
+    val title: String,
+    val obtained: Double,
+    val maxMark: Double,
+    val percentage: Double,
+    val isWeakness: Boolean
+)
+
+private data class SubjectStatusBadgeColors(
+    val text: String,
+    val bg: Color,
+    val textColor: Color,
+    val border: Color
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AcademicDataTab(student: StudentEntity, academicYear: String) {
+fun AcademicDataTab(
+    student: StudentEntity,
+    academicYear: String,
+    studentMarks: List<StudentMarkEntity> = emptyList(),
+    assessments: List<AssessmentEntity> = emptyList(),
+    blueprints: List<ExamQuestionBlueprintEntity> = emptyList()
+) {
     val level = when (student.gradeName) {
         "KG" -> "Kindergarten"
         "G1", "G2", "G3", "G4", "G5" -> "Primary Level (G1-G5)"
@@ -1449,10 +1541,71 @@ fun AcademicDataTab(student: StudentEntity, academicYear: String) {
         else -> "General Level"
     }
 
-    val subjects = try {
-        SchoolPolicy.getDefaultSubjectNamesForGrade(student.gradeName, student.stream)
-    } catch (e: Exception) {
-        listOf("Myanmar", "English", "Mathematics", "Science")
+    val subjects = remember(student.gradeName, student.stream) {
+        try {
+            SchoolPolicy.getDefaultSubjectNamesForGrade(student.gradeName, student.stream)
+        } catch (e: Exception) {
+            listOf("Myanmar", "English", "Mathematics", "Science")
+        }
+    }
+
+    // Assessments relevant to student marks or academic year
+    val relevantAssessments = remember(assessments, studentMarks) {
+        val markAssessmentIds = studentMarks.map { it.assessmentId }.toSet()
+        if (markAssessmentIds.isNotEmpty()) {
+            val matched = assessments.filter { it.id in markAssessmentIds }
+            if (matched.isNotEmpty()) matched else assessments
+        } else {
+            assessments
+        }
+    }
+
+    // Track selected assessment filter (if assessments exist)
+    var selectedAssessmentId by remember(relevantAssessments, studentMarks) {
+        mutableStateOf(
+            relevantAssessments.firstOrNull { it.id in studentMarks.map { m -> m.assessmentId } }?.id
+                ?: relevantAssessments.firstOrNull()?.id
+        )
+    }
+
+    // Filter student marks by selected assessment
+    val filteredMarks = remember(studentMarks, selectedAssessmentId) {
+        if (selectedAssessmentId != null) {
+            studentMarks.filter { it.assessmentId == selectedAssessmentId }
+        } else {
+            studentMarks
+        }
+    }
+
+    // Track expanded state for each subject card (Option A: Accordion)
+    val expandedSubjects = remember { mutableStateMapOf<String, Boolean>() }
+
+    // Precalculate weaknesses across all subjects for summary badge
+    val allWeakQuestions = remember(subjects, filteredMarks, blueprints) {
+        val list = mutableListOf<Triple<String, String, Double>>()
+        subjects.forEach { subj ->
+            val mark = filteredMarks.firstOrNull { it.subjectName.equals(subj, ignoreCase = true) }
+            if (mark != null && !mark.questionMarksJson.isNullOrBlank() && mark.questionMarksJson != "{}") {
+                val qMarks = ExamQuestionBlueprintHelper.parseQuestionMarks(mark.questionMarksJson)
+                val bp = blueprints.firstOrNull { it.subjectName.equals(subj, ignoreCase = true) }
+                val qItems = if (bp != null) {
+                    val p = ExamQuestionBlueprintHelper.parseQuestions(bp.questionsJson)
+                    if (p.isNotEmpty()) p else ExamQuestionBlueprintHelper.getDefaultQuestionsForSubject(subj)
+                } else {
+                    ExamQuestionBlueprintHelper.getDefaultQuestionsForSubject(subj)
+                }
+
+                qItems.forEach { item ->
+                    val obt = qMarks[item.qNo] ?: 0.0
+                    val max = if (item.maxMark > 0.0) item.maxMark else 20.0
+                    val pct = (obt / max) * 100.0
+                    if (pct < 50.0) {
+                        list.add(Triple(subj, "${item.qNo} ${item.title.take(15)}", pct))
+                    }
+                }
+            }
+        }
+        list
     }
 
     Column(
@@ -1461,6 +1614,7 @@ fun AcademicDataTab(student: StudentEntity, academicYear: String) {
             .padding(top = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // 1. Current Enrolled Status Card
         DetailSectionCard(title = "Current Enrolled Status") {
             DetailRow("Academic Year", academicYear)
             DetailRow("Education Level", level)
@@ -1471,13 +1625,643 @@ fun AcademicDataTab(student: StudentEntity, academicYear: String) {
             }
         }
 
-        DetailSectionCard(title = "Mapped Academic Subjects (${subjects.size})") {
-            Text(
-                text = subjects.joinToString(" • "),
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp)
+        // 2. Exam Period / Assessment Selector (if multiple assessments available)
+        if (relevantAssessments.size > 1) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.EventNote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = "Exam Period:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        relevantAssessments.forEach { asm ->
+                            val isSelected = selectedAssessmentId == asm.id
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedAssessmentId = asm.id },
+                                label = {
+                                    Text(
+                                        asm.assessmentName.ifBlank { asm.assessmentType },
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                modifier = Modifier.height(28.dp),
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                } else null
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Question Weakness Overall Focus Area Banner
+        if (allWeakQuestions.isNotEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFFFFEBEE),
+                border = BorderStroke(1.dp, Color(0xFFEF9A9A)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.WarningAmber,
+                            contentDescription = null,
+                            tint = Color(0xFFC62828),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "အထူးဂရုပြုရန် အားနည်းချက်များ (${allWeakQuestions.size} ပိုင်း)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFC62828)
+                        )
+                    }
+                    Text(
+                        text = "အောက်ပါ မေးခွန်းအပိုင်းများသည် ကျောင်းသားရမှတ် ၅၀% အောက် ဖြစ်နေပါသည် -",
+                        fontSize = 10.sp,
+                        color = Color(0xFFB71C1C)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        allWeakQuestions.take(6).forEach { (subj, qTitle, pct) ->
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color.White,
+                                border = BorderStroke(0.5.dp, Color(0xFFEF9A9A))
+                            ) {
+                                Text(
+                                    text = "$subj • $qTitle (${pct.toInt()}%)",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFC62828),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (filteredMarks.any { !it.questionMarksJson.isNullOrBlank() && it.questionMarksJson != "{}" }) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFFE8F5E9),
+                border = BorderStroke(1.dp, Color(0xFFA5D6A7)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = Color(0xFF2E7D32),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "အားလုံးသော မေးခွန်းအပိုင်းများတွင် ၅၀% နှင့်အထက် ရရှိထားပါသည် ✨",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF1B5E20)
+                    )
+                }
+            }
+        }
+
+        // 4. Section Title with Expand / Collapse All control
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FactCheck,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "ဘာသာရပ်အလိုက် မေးခွန်းရမှတ်နှင့် အားနည်းချက်",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            val allExpanded = subjects.all { expandedSubjects[it] == true }
+            TextButton(
+                onClick = {
+                    val target = !allExpanded
+                    subjects.forEach { expandedSubjects[it] = target }
+                },
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                modifier = Modifier.height(26.dp)
+            ) {
+                Text(
+                    text = if (allExpanded) "အားလုံးပိတ်ရန်" else "အားလုံးဖွင့်ရန်",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        // 5. Expandable Subject Cards (Option A Accordion Pattern)
+        subjects.forEach { subjectName ->
+            val mark = filteredMarks.firstOrNull { it.subjectName.equals(subjectName, ignoreCase = true) }
+            val blueprint = blueprints.firstOrNull { it.subjectName.equals(subjectName, ignoreCase = true) }
+            val isExpanded = expandedSubjects[subjectName] ?: false
+
+            SubjectQuestionAccordionCard(
+                subjectName = subjectName,
+                mark = mark,
+                blueprint = blueprint,
+                isExpanded = isExpanded,
+                onToggleExpand = {
+                    expandedSubjects[subjectName] = !(expandedSubjects[subjectName] ?: false)
+                }
             )
+        }
+    }
+}
+
+@Composable
+fun SubjectQuestionAccordionCard(
+    subjectName: String,
+    mark: StudentMarkEntity?,
+    blueprint: ExamQuestionBlueprintEntity?,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit
+) {
+    // Parse question items and marks
+    val questionStats = remember(mark?.questionMarksJson, blueprint?.questionsJson, subjectName) {
+        val qMarks = mark?.questionMarksJson?.let { ExamQuestionBlueprintHelper.parseQuestionMarks(it) } ?: emptyMap()
+        val bpItems = if (blueprint != null) {
+            val parsed = ExamQuestionBlueprintHelper.parseQuestions(blueprint.questionsJson)
+            if (parsed.isNotEmpty()) parsed else ExamQuestionBlueprintHelper.getDefaultQuestionsForSubject(subjectName)
+        } else {
+            ExamQuestionBlueprintHelper.getDefaultQuestionsForSubject(subjectName)
+        }
+
+        bpItems.map { item ->
+            val obtained = qMarks[item.qNo] ?: 0.0
+            val max = if (item.maxMark > 0.0) item.maxMark else 20.0
+            val pct = if (max > 0.0) (obtained / max) * 100.0 else 0.0
+            SubjectQuestionBreakdownItem(
+                qNo = item.qNo,
+                title = item.title,
+                obtained = obtained,
+                maxMark = max,
+                percentage = pct,
+                isWeakness = pct < 50.0
+            )
+        }
+    }
+
+    val hasQuestionMarks = remember(mark?.questionMarksJson) {
+        !mark?.questionMarksJson.isNullOrBlank() && mark?.questionMarksJson != "{}"
+    }
+
+    val criticalWeaknesses = remember(questionStats, hasQuestionMarks) {
+        if (hasQuestionMarks) questionStats.filter { it.isWeakness } else emptyList()
+    }
+
+    val scoreDisplay = when {
+        mark != null && mark.obtainedMarks != null -> {
+            val pct = (mark.obtainedMarks / mark.maxMarks.coerceAtLeast(1)) * 100.0
+            "${mark.obtainedMarks.toInt()}/${mark.maxMarks} (${pct.toInt()}%)"
+        }
+        else -> "Pending"
+    }
+
+    val statusBadge = when {
+        mark == null || mark.obtainedMarks == null -> SubjectStatusBadgeColors("Pending", Color(0xFFF5F5F5), Color.Gray, Color.LightGray)
+        mark.isDistinction -> SubjectStatusBadgeColors("Distinction", Color(0xFFFFF8E1), Color(0xFFE65100), Color(0xFFFFB300))
+        mark.isPassed -> SubjectStatusBadgeColors("Pass", Color(0xFFE8F5E9), Color(0xFF2E7D32), Color(0xFF81C784))
+        else -> SubjectStatusBadgeColors("Fail", Color(0xFFFFEBEE), Color(0xFFC62828), Color(0xFFE57373))
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = if (criticalWeaknesses.isNotEmpty()) Color(0xFFEF9A9A)
+                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(8.dp)
+            ),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (criticalWeaknesses.isNotEmpty()) Color(0xFFFFFBFA) else MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Header Row (Clickable for Accordion Expansion)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleExpand() }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Left: Subject Name & Weakness Quick Badge
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MenuBook,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = subjectName,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    // Compact Alert tag shown right in collapsed header (Option A Requirement)
+                    if (hasQuestionMarks) {
+                        if (criticalWeaknesses.isNotEmpty()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                modifier = Modifier.padding(top = 1.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.WarningAmber,
+                                    contentDescription = null,
+                                    tint = Color(0xFFC62828),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Text(
+                                    text = "Weak: ${criticalWeaknesses.joinToString { "${it.qNo} (${it.percentage.toInt()}%)" }}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFC62828),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "✨ အပိုင်းအားလုံး အခြေအနေကောင်းမွန်ပါသည်",
+                                fontSize = 9.sp,
+                                color = Color(0xFF2E7D32)
+                            )
+                        }
+                    } else if (mark?.obtainedMarks != null) {
+                        Text(
+                            text = "မေးခွန်းအလိုက် အမှတ်ခွဲခြမ်းစိတ်ဖြာချက် မရှိသေးပါ",
+                            fontSize = 9.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                // Right: Marks Badge, Status Pill, Chevron
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = scoreDisplay,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = statusBadge.bg,
+                        border = BorderStroke(0.8.dp, statusBadge.border)
+                    ) {
+                        Text(
+                            text = statusBadge.text,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = statusBadge.textColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onToggleExpand,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (isExpanded) "Collapse" else "Expand",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            // Expanded Breakdown Content (Option A Accordion)
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
+                        .padding(bottom = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        thickness = 0.8.dp
+                    )
+
+                    if (hasQuestionMarks && questionStats.isNotEmpty()) {
+                        // Breakdown Header
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "မေးခွန်းနံပါတ်နှင့် ခေါင်းစဉ်",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "ရမှတ်နှင့် စွမ်းဆောင်ရည်",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        // Question rows with progress bars
+                        questionStats.forEach { qStat ->
+                            val progress = (qStat.percentage / 100.0).toFloat().coerceIn(0f, 1f)
+                            val barColor = when {
+                                qStat.percentage < 40.0 -> Color(0xFFD32F2F)
+                                qStat.percentage < 70.0 -> Color(0xFFF57C00)
+                                else -> Color(0xFF2E7D32)
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (qStat.isWeakness) Color(0xFFFFEBEE).copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                border = if (qStat.isWeakness) BorderStroke(0.5.dp, Color(0xFFEF9A9A)) else null,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                text = qStat.qNo,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp,
+                                                color = if (qStat.isWeakness) Color(0xFFC62828) else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "• ${qStat.title.ifBlank { "Section ${qStat.qNo}" }}",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "${if (qStat.obtained % 1.0 == 0.0) qStat.obtained.toInt() else qStat.obtained}/${qStat.maxMark.toInt()}",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "(${qStat.percentage.toInt()}%)",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = barColor
+                                            )
+                                            if (qStat.percentage < 40.0) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(3.dp),
+                                                    color = Color(0xFFFFCDD2)
+                                                ) {
+                                                    Text(
+                                                        text = "အားနည်း",
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFB71C1C),
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            } else if (qStat.percentage >= 75.0) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(3.dp),
+                                                    color = Color(0xFFC8E6C9)
+                                                ) {
+                                                    Text(
+                                                        text = "ကျွမ်းကျင်",
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF1B5E20),
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Progress bar
+                                    LinearProgressIndicator(
+                                        progress = progress,
+                                        color = barColor,
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(4.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                    )
+                                }
+                            }
+                        }
+
+                        // Pedagogical Diagnostic Insight / Recommendation Card
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (criticalWeaknesses.isNotEmpty()) Color(0xFFFFF3E0) else Color(0xFFE8F5E9),
+                            border = BorderStroke(0.5.dp, if (criticalWeaknesses.isNotEmpty()) Color(0xFFFFB74D) else Color(0xFFA5D6A7)),
+                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (criticalWeaknesses.isNotEmpty()) Icons.Default.Lightbulb else Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = if (criticalWeaknesses.isNotEmpty()) Color(0xFFE65100) else Color(0xFF2E7D32),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = if (criticalWeaknesses.isNotEmpty()) "ဆရာ/ဆရာမများအတွက် သင်ကြားရေး အကြံပြုချက်:"
+                                        else "စွမ်းဆောင်ရည် သုံးသပ်ချက်:",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (criticalWeaknesses.isNotEmpty()) Color(0xFFE65100) else Color(0xFF2E7D32)
+                                    )
+                                    val adviceText = if (criticalWeaknesses.isNotEmpty()) {
+                                        "ကျောင်းသားသည် ${criticalWeaknesses.joinToString(", ") { "${it.qNo} (${it.title.ifBlank { "အပိုင်း" }})" }} တွင် အမှတ်နည်းပါးနေပါသည်။ အဆိုပါအပိုင်း၏ အခြေခံသဘောတရားများနှင့် မေးခွန်းဟောင်းများကို သီးသန့်ပြန်လည်လေ့ကျင့်ပေးရန် အကြံပြုပါသည်။"
+                                    } else {
+                                        "ဤဘာသာရပ်၏ မေးခွန်းအပိုင်းအားလုံးတွင် မျှတစွာ ကောင်းမွန်သော စွမ်းဆောင်ရည်ပြသထားပါသည်။ လက်ရှိ သင်ကြားရေးနည်းစနစ်အတိုင်း ဆက်လက်ထိန်းသိမ်းရန် အကြံပြုပါသည်။"
+                                    }
+                                    Text(
+                                        text = adviceText,
+                                        fontSize = 9.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        lineHeight = 13.sp
+                                    )
+                                }
+                            }
+                        }
+                    } else if (mark?.obtainedMarks != null) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "မေးခွန်းတစ်ခုချင်း အမှတ်ခွဲခြမ်းစိတ်ဖြာချက် မရှိသေးပါ",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "ဤဘာသာရပ်အတွက် စုစုပေါင်းရမှတ် (${mark.obtainedMarks.toInt()}/${mark.maxMarks}) ထည့်သွင်းထားပြီးဖြစ်သော်လည်း မေးခွန်းအလိုက် အမှတ်များ ထည့်သွင်းမထားသေးပါ။ Marks Entry မော်ဂျူးတွင် မေးခွန်းအလိုက် အမှတ်များ ဖြည့်သွင်းနိုင်ပါသည်။",
+                                    fontSize = 10.sp,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "ဤဘာသာရပ်အတွက် ရမှတ်များ ထည့်သွင်းထားခြင်း မရှိသေးပါ။",
+                                fontSize = 10.sp,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(10.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

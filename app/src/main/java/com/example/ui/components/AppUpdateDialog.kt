@@ -38,6 +38,9 @@ fun AppUpdateDialog(
 
     val isDownloading = downloadState is DownloadProgressState.Downloading
     val isInstalling = downloadState is DownloadProgressState.Installing
+    var hasUnknownSources by remember {
+        mutableStateOf(AppUpdateManager.hasUnknownSourcesPermission(context))
+    }
 
     // Dismiss cleanup handler
     val handleDismiss = {
@@ -100,6 +103,47 @@ fun AppUpdateDialog(
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                // Permission Warning & Quick-Fix Banner
+                if (!hasUnknownSources) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFFF8E1),
+                        border = BorderStroke(1.dp, Color(0xFFFFD54F)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Install Unknown Apps Permission",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFE65100)
+                                )
+                                Text(
+                                    text = "Installer တိုက်ရိုက်ပွင့်ရန် Settings တွင် Allow ပေးရန် လိုအပ်ပါသည်",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF795548)
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    AppUpdateManager.requestUnknownSourcesPermission(context)
+                                    hasUnknownSources = AppUpdateManager.hasUnknownSourcesPermission(context)
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Allow", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                            }
+                        }
+                    }
+                }
 
                 if (updateInfo.releaseNotes.isNotBlank()) {
                     Surface(
@@ -311,7 +355,7 @@ fun AppUpdateDialog(
                     OutlinedButton(
                         onClick = {
                             val fileName = "HCM_SMS_v${updateInfo.latestVersionName.replace(' ', '_')}.apk"
-                            AppUpdateManager.installDownloadedApk(context, fileName)
+                            AppUpdateManager.installDownloadedApk(context, fileName, AppUpdateManager.activeDownloadId)
                         },
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -362,7 +406,7 @@ fun AppUpdateDialog(
                     Button(
                         onClick = {
                             val fileName = "HCM_SMS_v${updateInfo.latestVersionName.replace(' ', '_')}.apk"
-                            AppUpdateManager.installDownloadedApk(context, fileName)
+                            AppUpdateManager.installDownloadedApk(context, fileName, AppUpdateManager.activeDownloadId)
                         },
                         shape = RoundedCornerShape(8.dp)
                     ) {

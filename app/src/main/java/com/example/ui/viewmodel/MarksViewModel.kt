@@ -28,6 +28,22 @@ enum class MarkSortOption(val displayName: String) {
     MARKS_ASC("Marks (Lowest First)")
 }
 
+data class QuestionAnalysisStat(
+    val qNo: String,
+    val title: String,
+    val maxMark: Double,
+    val averageScore: Double,
+    val percentage: Double,
+    val evaluatedStudentCount: Int
+)
+
+data class AssessmentQuestionAnalytics(
+    val questions: List<QuestionAnalysisStat>,
+    val weakestQuestion: QuestionAnalysisStat?,
+    val strongestQuestion: QuestionAnalysisStat?,
+    val totalEvaluatedStudents: Int
+)
+
 data class EditableMarkRow(
     val studentId: Long,
     val studentCode: String,
@@ -41,7 +57,9 @@ data class EditableMarkRow(
     val isPassed: Boolean,
     val isDistinction: Boolean,
     val remarks: String,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val questionMarksJson: String? = null,
+    val questionMarks: Map<String, Double> = emptyMap()
 )
 
 class MarksViewModel(
@@ -93,6 +111,15 @@ class MarksViewModel(
     }.flatMapLatest { (grade, year) ->
         assessmentRepository.getAssessmentsByGrade(grade, year)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val currentBlueprint: StateFlow<ExamQuestionBlueprintEntity?> = combine(
+        selectedGrade,
+        selectedSubject
+    ) { grade, subject ->
+        Pair(grade, subject)
+    }.flatMapLatest { (grade, subject) ->
+        marksRepository.getQuestionBlueprintFlow(grade, subject)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private data class MarkStudentFilter(
         val grade: String,
@@ -215,6 +242,9 @@ class MarksViewModel(
                         if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
                     } ?: ""
 
+                    val qJson = existing?.questionMarksJson
+                    val qMarksMap = com.example.data.policy.ExamQuestionBlueprintHelper.parseQuestionMarks(qJson)
+
                     EditableMarkRow(
                         studentId = student.id,
                         studentCode = student.studentCode,
@@ -228,7 +258,9 @@ class MarksViewModel(
                         isPassed = obtainedVal != null && obtainedVal >= passMark,
                         isDistinction = obtainedVal != null && obtainedVal >= distinctionMark,
                         remarks = existing?.remarks ?: "",
-                        errorMessage = null
+                        errorMessage = null,
+                        questionMarksJson = qJson,
+                        questionMarks = qMarksMap
                     )
                 }
             }.collect { rows ->
@@ -308,6 +340,69 @@ class MarksViewModel(
         }
     }
 
+    fun updateQuestionMarks(studentId: Long, marksMap: Map<String, Double>) {
+        if (isLocked.value) return
+        val currentList = editableMarkRows.value.toMutableList()
+        val index = currentList.indexOfFirst { it.studentId == studentId }
+        if (index != -1) {
+            val target = currentList[index]
+            val totalObtained = marksMap.values.sum()
+            val textVal = if (totalObtained % 1.0 == 0.0) totalObtained.toInt().toString() else String.format(java.util.Locale.US, "%.1f", totalObtained)
+            val passed = totalObtained >= target.passMark
+            val distinction = totalObtained >= target.distinctionMark
+            val json = com.example.data.policy.ExamQuestionBlueprintHelper.serializeQuestionMarks(marksMap)
+
+            currentList[index] = target.copy(
+                obtainedText = textVal,
+                obtainedMarks = totalObtained,
+                isPassed = passed,
+                isDistinction = distinction,
+                errorMessage = null,
+                questionMarksJson = json,
+                questionMarks = marksMap
+            )
+            editableMarkRows.value = currentList
+        }
+    }
+
+    // Question analytics across all students in the class
+    val questionAnalytics: StateFlow<AssessmentQuestionAnalytics?> = combine(
+        editableMarkRows,
+        currentBlueprint
+    ) { rows, blueprint ->
+        if (blueprint == null) return@combine null
+        val questions = com.example.data.policy.ExamQuestionBlueprintHelper.parseQuestions(blueprint.questionsJson)
+        if (questions.isEmpty()) return@combine null
+
+        val rowsWithQMarks = rows.filter { it.questionMarks.isNotEmpty() }
+        if (rowsWithQMarks.isEmpty()) return@combine null
+
+        val evaluatedCount = rowsWithQMarks.size
+        val stats = questions.map { q ->
+            val sumMarks = rowsWithQMarks.mapNotNull { it.questionMarks[q.qNo] }.sum()
+            val avg = sumMarks / evaluatedCount
+            val pct = if (q.maxMark > 0) (avg / q.maxMark) * 100.0 else 0.0
+            QuestionAnalysisStat(
+                qNo = q.qNo,
+                title = q.title,
+                maxMark = q.maxMark,
+                averageScore = avg,
+                percentage = pct,
+                evaluatedStudentCount = evaluatedCount
+            )
+        }
+
+        val weakest = stats.minByOrNull { it.percentage }
+        val strongest = stats.maxByOrNull { it.percentage }
+
+        AssessmentQuestionAnalytics(
+            questions = stats,
+            weakestQuestion = weakest,
+            strongestQuestion = strongest,
+            totalEvaluatedStudents = evaluatedCount
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     fun updateRemarks(studentId: Long, remarks: String) {
         if (isLocked.value) return
         val currentList = editableMarkRows.value.toMutableList()
@@ -349,6 +444,7 @@ class MarksViewModel(
                     isPassed = row.isPassed,
                     isDistinction = row.isDistinction,
                     remarks = row.remarks,
+                    questionMarksJson = row.questionMarksJson,
                     updatedAt = System.currentTimeMillis(),
                     updatedBy = currentUserName
                 )

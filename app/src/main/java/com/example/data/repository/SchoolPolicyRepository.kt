@@ -6,7 +6,8 @@ import kotlinx.coroutines.flow.Flow
 
 class SchoolPolicyRepository(
     private val schoolPolicyDao: SchoolPolicyDao,
-    private val academicYearDao: com.example.data.local.dao.AcademicYearDao? = null
+    private val academicYearDao: com.example.data.local.dao.AcademicYearDao? = null,
+    private val examQuestionBlueprintDao: com.example.data.local.dao.ExamQuestionBlueprintDao? = null
 ) {
 
     val schoolSettings: Flow<SchoolSettingEntity?> = schoolPolicyDao.getSchoolSettings()
@@ -16,6 +17,7 @@ class SchoolPolicyRepository(
     val allAssessmentTypes: Flow<List<AssessmentTypeEntity>> = schoolPolicyDao.getAllAssessmentTypes()
     val allCustomExams: Flow<List<CustomExamEntity>> = schoolPolicyDao.getAllCustomExams()
     val allGradingPolicies: Flow<List<GradingPolicyEntity>> = schoolPolicyDao.getAllGradingPolicies()
+    val allExamBlueprints: Flow<List<ExamQuestionBlueprintEntity>> = examQuestionBlueprintDao?.getAllBlueprints() ?: kotlinx.coroutines.flow.flowOf(emptyList())
 
     suspend fun updateSchoolSettings(settings: SchoolSettingEntity) {
         android.util.Log.d("AcademicYearDebug", "BEFORE_YEAR_CHANGE: Updating school settings with academicYear='${settings.academicYear}'")
@@ -178,6 +180,59 @@ class SchoolPolicyRepository(
     suspend fun deleteGradingPolicy(id: Long) {
         schoolPolicyDao.deleteGradingPolicy(id)
         triggerBackgroundSync()
+    }
+
+    // ==========================================
+    // EXAM QUESTION BLUEPRINTS (G10 - G12)
+    // ==========================================
+
+    fun getBlueprintsForGrade(gradeName: String): Flow<List<ExamQuestionBlueprintEntity>> {
+        return examQuestionBlueprintDao?.getBlueprintsForGrade(gradeName) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+
+    fun getBlueprintFlow(gradeName: String, subjectName: String): Flow<ExamQuestionBlueprintEntity?> {
+        return examQuestionBlueprintDao?.getBlueprintFlow(gradeName, subjectName) ?: kotlinx.coroutines.flow.flowOf(null)
+    }
+
+    suspend fun getBlueprint(gradeName: String, subjectName: String): ExamQuestionBlueprintEntity? {
+        return examQuestionBlueprintDao?.getBlueprint(gradeName, subjectName)
+    }
+
+    suspend fun saveBlueprint(blueprint: ExamQuestionBlueprintEntity): Long {
+        val dao = examQuestionBlueprintDao ?: return 0L
+        val dirty = blueprint.copy(
+            isDirty = true,
+            updatedAt = System.currentTimeMillis(),
+            uuid = blueprint.uuid.ifBlank { java.util.UUID.randomUUID().toString() }
+        )
+        val id = dao.insertOrUpdateBlueprint(dirty)
+        triggerBackgroundSync()
+        return id
+    }
+
+    suspend fun deleteBlueprint(id: Long) {
+        examQuestionBlueprintDao?.deleteBlueprint(id)
+        triggerBackgroundSync()
+    }
+
+    suspend fun resetToDefaultBlueprintsForGrade(gradeName: String) {
+        val dao = examQuestionBlueprintDao ?: return
+        dao.deleteBlueprintsForGrade(gradeName)
+        val defaults = com.example.data.policy.ExamQuestionBlueprintHelper.getDefaultBlueprintsForGrade(gradeName)
+        dao.insertBlueprints(defaults)
+        triggerBackgroundSync()
+    }
+
+    suspend fun seedDefaultBlueprintsIfEmpty() {
+        val dao = examQuestionBlueprintDao ?: return
+        val current = dao.getAllBlueprintsSync()
+        if (current.isEmpty()) {
+            listOf("G10", "G11", "G12").forEach { grade ->
+                val defaults = com.example.data.policy.ExamQuestionBlueprintHelper.getDefaultBlueprintsForGrade(grade)
+                dao.insertBlueprints(defaults)
+            }
+            triggerBackgroundSync()
+        }
     }
 
     private fun triggerBackgroundSync() {
