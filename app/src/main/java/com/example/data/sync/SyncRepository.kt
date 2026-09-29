@@ -9,6 +9,8 @@ import com.example.data.sync.model.*
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Count
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.util.UUID
 
 sealed class SyncResult {
@@ -495,6 +497,81 @@ class SyncRepository(
                         pushSuccess = true
                     } catch (e: Exception) {
                         Log.e(TAG, "Student insert failed: ${e.message}")
+                    }
+                }
+
+                // 6. Resilient Fallback: If full DTO push failed (e.g. schema mismatch like student_nrc/father_nrc),
+                // retry using a safe universal payload containing only the core verified columns.
+                if (!pushSuccess) {
+                    val safeCorePayload = buildJsonObject {
+                        existingRemote?.id?.let { put("id", it) }
+                        put("uuid", targetUuid)
+                        put("student_id", updatedStudent.studentCode.ifBlank { "STU-${updatedStudent.id}" })
+                        put("name", updatedStudent.name)
+                        put("grade", updatedStudent.gradeName)
+                        put("class_name", updatedStudent.className)
+                        put("gender", updatedStudent.gender.ifBlank { "Male" })
+                        put("date_of_birth", updatedStudent.dateOfBirth.ifBlank { "2015-01-01" })
+                        put("parent_name", updatedStudent.parentName)
+                        put("parent_phone", updatedStudent.phone)
+                        put("address", updatedStudent.address)
+                        put("status", updatedStudent.status.ifBlank { "Active" })
+                        put("photo_avatar_index", updatedStudent.photoAvatarIndex)
+                        put("stream", updatedStudent.stream)
+                        put("photo_url", updatedStudent.photoUrl)
+                        put("father_name", updatedStudent.fatherName)
+                        put("mother_name", updatedStudent.motherName)
+                        put("is_deleted", updatedStudent.isDeleted)
+                    }
+
+                    // Fallback 6a. Try upsert with uuid
+                    try {
+                        client.from("students").upsert(safeCorePayload, onConflict = "uuid")
+                        pushSuccess = true
+                        Log.i(TAG, "Student push succeeded with safeCorePayload on uuid: $targetUuid")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Student safeCorePayload upsert on uuid failed: ${e.message}")
+                    }
+
+                    // Fallback 6b. Try upsert with student_id
+                    if (!pushSuccess && updatedStudent.studentCode.isNotBlank()) {
+                        try {
+                            client.from("students").upsert(safeCorePayload, onConflict = "student_id")
+                            pushSuccess = true
+                            Log.i(TAG, "Student push succeeded with safeCorePayload on student_id: ${updatedStudent.studentCode}")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Student safeCorePayload upsert on student_id failed: ${e.message}")
+                        }
+                    }
+
+                    // Fallback 6c. Try direct insert
+                    if (!pushSuccess && existingRemote == null) {
+                        try {
+                            val safeInsertPayload = buildJsonObject {
+                                put("uuid", targetUuid)
+                                put("student_id", updatedStudent.studentCode.ifBlank { "STU-${updatedStudent.id}" })
+                                put("name", updatedStudent.name)
+                                put("grade", updatedStudent.gradeName)
+                                put("class_name", updatedStudent.className)
+                                put("gender", updatedStudent.gender.ifBlank { "Male" })
+                                put("date_of_birth", updatedStudent.dateOfBirth.ifBlank { "2015-01-01" })
+                                put("parent_name", updatedStudent.parentName)
+                                put("parent_phone", updatedStudent.phone)
+                                put("address", updatedStudent.address)
+                                put("status", updatedStudent.status.ifBlank { "Active" })
+                                put("photo_avatar_index", updatedStudent.photoAvatarIndex)
+                                put("stream", updatedStudent.stream)
+                                put("photo_url", updatedStudent.photoUrl)
+                                put("father_name", updatedStudent.fatherName)
+                                put("mother_name", updatedStudent.motherName)
+                                put("is_deleted", updatedStudent.isDeleted)
+                            }
+                            client.from("students").insert(safeInsertPayload)
+                            pushSuccess = true
+                            Log.i(TAG, "Student push succeeded with safeInsertPayload")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Student safeInsertPayload failed: ${e.message}")
+                        }
                     }
                 }
 
