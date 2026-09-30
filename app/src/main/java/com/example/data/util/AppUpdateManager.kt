@@ -333,6 +333,7 @@ object AppUpdateManager {
                                             statusText = "Download complete (100%). Launching installer..."
                                         )
                                         _downloadProgress.value = DownloadProgressState.Installing(fileName)
+                                        delay(500)
                                         installDownloadedApk(context, fileName, downloadId)
                                     }
                                     DownloadManager.STATUS_PAUSED -> {
@@ -426,19 +427,45 @@ object AppUpdateManager {
                 return
             }
 
-            // 2. Resolve target APK file in app downloads directory
+            val effectiveDownloadId = downloadId ?: activeDownloadId
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
             val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             var targetFile: File? = null
 
+            // 2a. Query DownloadManager cursor for the exact downloaded local file
+            if (effectiveDownloadId != null && effectiveDownloadId > 0 && downloadManager != null) {
+                try {
+                    val query = DownloadManager.Query().setFilterById(effectiveDownloadId)
+                    downloadManager.query(query)?.use { c ->
+                        if (c.moveToFirst()) {
+                            val localUriIdx = c.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+                            if (localUriIdx >= 0) {
+                                val localUriStr = c.getString(localUriIdx)
+                                if (!localUriStr.isNullOrBlank()) {
+                                    val parsed = Uri.parse(localUriStr)
+                                    val f = if (parsed.scheme == "file") File(parsed.path ?: "") else null
+                                    if (f != null && f.exists() && f.length() > 1024 * 50) {
+                                        targetFile = f
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "Error resolving local file from DownloadManager cursor: ${e.message}")
+                }
+            }
+
+            // 2b. If not found via cursor, check downloadsDir with specified name
             val nameToLookFor = fileName ?: activeDownloadedFileName
-            if (!nameToLookFor.isNullOrBlank() && downloadsDir != null) {
+            if (targetFile == null && !nameToLookFor.isNullOrBlank() && downloadsDir != null) {
                 val candidate = File(downloadsDir, nameToLookFor)
                 if (candidate.exists() && candidate.length() > 1024 * 50) {
                     targetFile = candidate
                 }
             }
 
-            // Smart fallback: Search for newest valid .apk in downloads folder
+            // 2c. Fallback: Check newest .apk in downloads folder
             if (targetFile == null && downloadsDir != null) {
                 val apkFiles = downloadsDir.listFiles { f ->
                     f.isFile && f.name.endsWith(".apk", ignoreCase = true) && f.length() > 1024 * 50
@@ -446,30 +473,61 @@ object AppUpdateManager {
                 targetFile = apkFiles?.maxByOrNull { it.lastModified() }
             }
 
-            // 3. Try Dual-Path URI Resolution:
-            var installUri: Uri? = null
-            val effectiveDownloadId = downloadId ?: activeDownloadId
-            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-
-            // Path A: Prefer DownloadManager's Content URI if available
-            if (effectiveDownloadId != null && effectiveDownloadId > 0 && downloadManager != null) {
+            // 2d. Fallback: Stream directly from DownloadManager PFD into cache
+            val cacheApk = File(context.cacheDir, "update_installer.apk")
+            if (targetFile == null && effectiveDownloadId != null && effectiveDownloadId > 0 && downloadManager != null) {
                 try {
-                    val dmUri = downloadManager.getUriForDownloadedFile(effectiveDownloadId)
-                    if (dmUri != null) {
-                        installUri = dmUri
+                    downloadManager.openDownloadedFile(effectiveDownloadId)?.use { pfd ->
+                        java.io.FileInputStream(pfd.fileDescriptor).use { input ->
+                            java.io.FileOutputStream(cacheApk).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                    if (cacheApk.exists() && cacheApk.length() > 1024 * 50) {
+                        targetFile = cacheApk
                     }
                 } catch (e: Exception) {
-                    Log.d(TAG, "DownloadManager getUriForDownloadedFile note: ${e.message}")
+                    Log.w(TAG, "Failed to stream APK from DownloadManager PFD: ${e.message}")
                 }
             }
 
-            // Path B: Fallback to FileProvider URI with explicit grant
-            if (installUri == null && targetFile != null && targetFile.exists()) {
-                installUri = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
+            // 3. Prepare pristine install file in internal cache to ensure no storage isolation or permission barriers
+            val fileToInstall: File? = if (targetFile != null && targetFile.exists()) {
+                try {
+                    if (targetFile != cacheApk) {
+                        targetFile.copyTo(cacheApk, overwrite = true)
+                        if (cacheApk.exists() && cacheApk.length() == targetFile.length()) cacheApk else targetFile
+                    } else {
+                        cacheApk
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Cache copy note: ${e.message}, using original file")
                     targetFile
-                )
+                }
+            } else {
+                null
+            }
+
+            // 4. Construct FileProvider URI (DO NOT use raw dmUri which causes permission denial in PackageInstaller)
+            var installUri: Uri? = null
+            if (fileToInstall != null && fileToInstall.exists()) {
+                try {
+                    installUri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        fileToInstall
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "FileProvider error: ${e.message}")
+                }
+            }
+
+            // Extreme fallback if FileProvider fails
+            if (installUri == null && effectiveDownloadId != null && effectiveDownloadId > 0 && downloadManager != null) {
+                try {
+                    installUri = downloadManager.getUriForDownloadedFile(effectiveDownloadId)
+                } catch (_: Exception) {}
             }
 
             if (installUri == null) {
@@ -484,17 +542,16 @@ object AppUpdateManager {
                 return
             }
 
-            // 4. Construct and configure Package Installer Intent
+            // 5. Construct Package Installer Intent
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(installUri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
             }
 
-            // 5. Explicitly grant URI read permissions to all candidate installer packages
+            // 6. Explicitly grant URI read permissions to all installer packages
             val resolvedActivities = try {
                 context.packageManager.queryIntentActivities(installIntent, 0)
             } catch (e: Exception) {
@@ -508,6 +565,17 @@ object AppUpdateManager {
                 } catch (e: Exception) {
                     Log.w(TAG, "grantUriPermission for $packageName: ${e.message}")
                 }
+            }
+
+            // Also explicitly grant to standard Android package installers
+            listOf(
+                "com.google.android.packageinstaller",
+                "com.android.packageinstaller",
+                "com.android.shell"
+            ).forEach { pkg ->
+                try {
+                    context.grantUriPermission(pkg, installUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (_: Exception) {}
             }
 
             context.startActivity(installIntent)

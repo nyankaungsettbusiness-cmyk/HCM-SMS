@@ -434,6 +434,39 @@ class SyncRepository(
             val isRemoteMissing = existingRemote == null
             if (student.isDirty || student.uuid.isBlank() || isRemoteMissing) {
                 val targetUuid = existingRemote?.uuid?.ifBlank { null } ?: assignedUuid
+
+                // If marked deleted, perform physical HARD DELETE on Supabase
+                if (updatedStudent.isDeleted) {
+                    var deleteSuccess = false
+                    try {
+                        if (targetUuid.isNotBlank()) {
+                            client.from("students").delete { filter { eq("uuid", targetUuid) } }
+                            deleteSuccess = true
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Delete student by uuid failed: ${e.message}")
+                    }
+                    if (!deleteSuccess && existingRemote?.id != null) {
+                        try {
+                            client.from("students").delete { filter { eq("id", existingRemote.id) } }
+                            deleteSuccess = true
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Delete student by id failed: ${e.message}")
+                        }
+                    }
+                    if (!deleteSuccess && updatedStudent.studentCode.isNotBlank()) {
+                        try {
+                            client.from("students").delete { filter { eq("student_id", updatedStudent.studentCode) } }
+                            deleteSuccess = true
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Delete student by student_id failed: ${e.message}")
+                        }
+                    }
+                    studentDao.markStudentSynced(updatedStudent.id, targetUuid)
+                    pushedCount++
+                    continue
+                }
+
                 val dto = StudentSupabaseDto.fromEntity(updatedStudent).copy(
                     id = existingRemote?.id,
                     uuid = targetUuid,
@@ -514,6 +547,7 @@ class SyncRepository(
                         put("date_of_birth", updatedStudent.dateOfBirth.ifBlank { "2015-01-01" })
                         put("parent_name", updatedStudent.parentName)
                         put("parent_phone", updatedStudent.phone)
+                        put("secondary_phone", updatedStudent.secondaryPhone)
                         put("address", updatedStudent.address)
                         put("status", updatedStudent.status.ifBlank { "Active" })
                         put("photo_avatar_index", updatedStudent.photoAvatarIndex)
@@ -557,6 +591,7 @@ class SyncRepository(
                                 put("date_of_birth", updatedStudent.dateOfBirth.ifBlank { "2015-01-01" })
                                 put("parent_name", updatedStudent.parentName)
                                 put("parent_phone", updatedStudent.phone)
+                                put("secondary_phone", updatedStudent.secondaryPhone)
                                 put("address", updatedStudent.address)
                                 put("status", updatedStudent.status.ifBlank { "Active" })
                                 put("photo_avatar_index", updatedStudent.photoAvatarIndex)
@@ -603,36 +638,20 @@ class SyncRepository(
                     
                     // DELETION TOMBSTONE PROTECTION:
                     // If local record is deleted and remote is NOT deleted, do not allow pull to resurrect the item
-                    if (existingLocal.isDeleted && !remoteDto.isDeleted && remoteEntity.updatedAt <= existingLocal.updatedAt) {
-                        SyncDiagnosticUtility.recordResurrectionBlocked(
-                            entityType = "Student",
-                            uuid = remoteDto.uuid,
-                            identifier = "${existingLocal.name} (${existingLocal.studentCode})",
-                            localUpdatedAt = existingLocal.updatedAt,
-                            remoteUpdatedAt = remoteEntity.updatedAt
-                        )
-                        // Actively synchronize the deletion flag back to Supabase
+                    if (existingLocal.isDeleted || remoteDto.isDeleted) {
                         try {
                             if (remoteDto.id != null) {
-                                client.from("students").update(mapOf("is_deleted" to true)) {
-                                    filter { eq("id", remoteDto.id) }
-                                }
+                                client.from("students").delete { filter { eq("id", remoteDto.id) } }
                             } else if (remoteDto.uuid.isNotBlank()) {
-                                client.from("students").update(mapOf("is_deleted" to true)) {
-                                    filter { eq("uuid", remoteDto.uuid) }
-                                }
+                                client.from("students").delete { filter { eq("uuid", remoteDto.uuid) } }
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Failed to propagate student deletion tombstone to Supabase: ${e.message}")
+                            Log.w(TAG, "Failed to purge deleted student from Supabase: ${e.message}")
                         }
                         continue
                     }
 
-                    if (remoteDto.isDeleted) {
-                        // Remote is deleted, apply soft-delete locally
-                        studentDao.updateStudent(remoteEntity.copy(isDeleted = true, isDirty = false))
-                        pulledCount++
-                    } else if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
+                    if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
                         studentDao.updateStudent(remoteEntity)
                         pulledCount++
                     }
@@ -683,6 +702,39 @@ class SyncRepository(
                 } catch (e: Exception) { null }
 
             val targetUuid = existingRemote?.uuid?.ifBlank { null } ?: assignedUuid
+
+            // If marked deleted, perform physical HARD DELETE on Supabase
+            if (updatedTeacher.isDeleted) {
+                var deleteSuccess = false
+                try {
+                    if (targetUuid.isNotBlank()) {
+                        client.from("teachers").delete { filter { eq("uuid", targetUuid) } }
+                        deleteSuccess = true
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Delete teacher by uuid failed: ${e.message}")
+                }
+                if (!deleteSuccess && existingRemote?.id != null) {
+                    try {
+                        client.from("teachers").delete { filter { eq("id", existingRemote.id) } }
+                        deleteSuccess = true
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Delete teacher by id failed: ${e.message}")
+                    }
+                }
+                if (!deleteSuccess && updatedTeacher.teacherCode.isNotBlank()) {
+                    try {
+                        client.from("teachers").delete { filter { eq("teacher_id", updatedTeacher.teacherCode) } }
+                        deleteSuccess = true
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Delete teacher by teacher_id failed: ${e.message}")
+                    }
+                }
+                teacherDao.markTeacherSynced(updatedTeacher.id, targetUuid)
+                pushedCount++
+                continue
+            }
+
             val dto = TeacherSupabaseDto.fromEntity(updatedTeacher).copy(
                 id = existingRemote?.id,
                 uuid = targetUuid,
@@ -767,28 +819,16 @@ class SyncRepository(
                 if (existingLocal != null) {
                     val remoteEntity = remoteDto.toEntity(existingLocalId = existingLocal.id, existingAddress = existingLocal.address)
                     
-                    // DELETION TOMBSTONE PROTECTION:
-                    if (existingLocal.isDeleted && !remoteDto.isDeleted && remoteEntity.updatedAt <= existingLocal.updatedAt) {
-                        SyncDiagnosticUtility.recordResurrectionBlocked(
-                            entityType = "Teacher",
-                            uuid = remoteDto.uuid,
-                            identifier = "${existingLocal.fullName} (${existingLocal.teacherCode})",
-                            localUpdatedAt = existingLocal.updatedAt,
-                            remoteUpdatedAt = remoteEntity.updatedAt
-                        )
-                        // Actively synchronize the deletion flag back to Supabase
+                    // If local record or remote record is deleted, permanently remove it from Supabase
+                    if (existingLocal.isDeleted || remoteDto.isDeleted) {
                         try {
                             if (remoteDto.id != null) {
-                                client.from("teachers").update(mapOf("is_deleted" to true)) {
-                                    filter { eq("id", remoteDto.id) }
-                                }
+                                client.from("teachers").delete { filter { eq("id", remoteDto.id) } }
                             } else if (remoteDto.uuid.isNotBlank()) {
-                                client.from("teachers").update(mapOf("is_deleted" to true)) {
-                                    filter { eq("uuid", remoteDto.uuid) }
-                                }
+                                client.from("teachers").delete { filter { eq("uuid", remoteDto.uuid) } }
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Failed to propagate teacher deletion tombstone to Supabase: ${e.message}")
+                            Log.w(TAG, "Failed to purge deleted teacher from Supabase: ${e.message}")
                         }
                         continue
                     }

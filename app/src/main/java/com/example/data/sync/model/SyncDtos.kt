@@ -20,7 +20,7 @@ data class StudentSupabaseDto(
     @SerialName("date_of_birth") val dateOfBirth: String = "",
     @SerialName("parent_name") val parentName: String = "",
     @SerialName("parent_phone") val parentPhone: String = "",
-    @kotlinx.serialization.Transient val secondaryPhone: String = "",
+    @SerialName("secondary_phone") val secondaryPhone: String = "",
     val address: String = "",
     val status: String = "Active",
     @SerialName("photo_avatar_index") val photoAvatarIndex: Int = 0,
