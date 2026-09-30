@@ -244,6 +244,7 @@ data class StudentEntity(
     val rollNumber: Int,
     val parentName: String,
     val phone: String,
+    val secondaryPhone: String = "", // Second phone number / emergency contact
     val address: String,
     val status: String = "Active", // Active, Inactive, Transferred
     val photoAvatarIndex: Int = 0,

@@ -577,9 +577,9 @@ fun StudentManagementScreen(
                             }
                             val file = java.io.File(exportDir, "students_roster_$timeStamp.csv")
                             val sb = java.lang.StringBuilder()
-                            sb.append("Student Code,Full Name,Gender,Date of Birth,Grade,Class,Roll No,NRC,Father Name,Mother Name,Parent Phone,Address,Status\n")
+                            sb.append("Student Code,Full Name,Gender,Date of Birth,Grade,Class,Roll No,NRC,Father Name,Mother Name,Parent Phone,Secondary Phone,Address,Status\n")
                             students.forEach { st ->
-                                sb.append("${st.studentCode},\"${st.name}\",${st.gender},${st.dateOfBirth},${st.gradeName},${st.className},${st.rollNumber},\"${st.studentNrc}\",\"${st.fatherName}\",\"${st.motherName}\",\"${st.phone}\",\"${st.address}\",${st.status}\n")
+                                sb.append("${st.studentCode},\"${st.name}\",${st.gender},${st.dateOfBirth},${st.gradeName},${st.className},${st.rollNumber},\"${st.studentNrc}\",\"${st.fatherName}\",\"${st.motherName}\",\"${st.phone}\",\"${st.secondaryPhone}\",\"${st.address}\",${st.status}\n")
                             }
                             file.writeText(sb.toString())
 
@@ -810,6 +810,29 @@ fun ModernStudentCard(
 
                 // Quick Actions (Touch friendly min 40dp)
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    val callTarget = student.phone.ifBlank { student.secondaryPhone }
+                    if (callTarget.isNotBlank()) {
+                        IconButton(
+                            onClick = {
+                                try {
+                                    val dialIntent = android.content.Intent(android.content.Intent.ACTION_DIAL).apply {
+                                        data = android.net.Uri.parse("tel:${callTarget.trim()}")
+                                    }
+                                    context.startActivity(dialIntent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Cannot open dialer: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Call,
+                                contentDescription = "Call Parent",
+                                tint = Color(0xFF2E7D32),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = onEdit,
                         modifier = Modifier.size(38.dp)
@@ -924,6 +947,7 @@ fun AddEditStudentDialog(
     var motherName by remember { mutableStateOf(student?.motherName ?: "") }
     var motherNrc by remember { mutableStateOf(student?.motherNrc ?: "") }
     var phone by remember { mutableStateOf(student?.phone ?: "") }
+    var secondaryPhone by remember { mutableStateOf(student?.secondaryPhone ?: "") }
     var address by remember { mutableStateOf(student?.address ?: "") }
     var status by remember { mutableStateOf(student?.status ?: "Active") }
 
@@ -1228,7 +1252,21 @@ fun AddEditStudentDialog(
                     OutlinedTextField(
                         value = phone,
                         onValueChange = { phone = it },
-                        label = { Text("Contact Phone Number", fontSize = 12.sp) },
+                        label = { Text("Primary Phone Number (Phone 1)", fontSize = 12.sp) },
+                        placeholder = { Text("e.g. 09-123456789", fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp)
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = secondaryPhone,
+                        onValueChange = { secondaryPhone = it },
+                        label = { Text("Secondary Phone / Emergency (Phone 2)", fontSize = 12.sp) },
+                        placeholder = { Text("e.g. 09-987654321", fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.PhoneIphone, contentDescription = null, modifier = Modifier.size(18.dp)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp)
@@ -1267,6 +1305,7 @@ fun AddEditStudentDialog(
                                 rollNumber = rollNumber.toIntOrNull() ?: 1,
                                 parentName = computedParentName,
                                 phone = phone,
+                                secondaryPhone = secondaryPhone,
                                 address = address,
                                 status = status,
                                 photoAvatarIndex = student?.photoAvatarIndex ?: 0,
@@ -1379,6 +1418,25 @@ fun StudentDetailDialog(
                 }
 
                 Row {
+                    val callTarget = student.phone.ifBlank { student.secondaryPhone }
+                    if (callTarget.isNotBlank()) {
+                        val headerCtx = LocalContext.current
+                        IconButton(
+                            onClick = {
+                                try {
+                                    val dialIntent = android.content.Intent(android.content.Intent.ACTION_DIAL).apply {
+                                        data = android.net.Uri.parse("tel:${callTarget.trim()}")
+                                    }
+                                    headerCtx.startActivity(dialIntent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(headerCtx, "Cannot open dialer: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.Call, contentDescription = "Quick Call", tint = Color(0xFF2E7D32), modifier = Modifier.size(18.dp))
+                        }
+                    }
                     IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     }
@@ -1502,7 +1560,8 @@ fun ProfileAndParentTab(student: StudentEntity) {
             if (student.fatherName.isBlank() && student.motherName.isBlank()) {
                 DetailRow("Parent / Guardian", student.parentName.ifBlank { "N/A" })
             }
-            DetailRow("Contact Phone", student.phone.ifBlank { "N/A" })
+            PhoneDetailRow("Primary Phone (Phone 1)", student.phone)
+            PhoneDetailRow("Secondary Phone (Phone 2)", student.secondaryPhone)
             DetailRow("Residential Address", student.address.ifBlank { "N/A" })
         }
     }
@@ -2630,5 +2689,57 @@ fun DetailRow(label: String, value: String) {
     ) {
         Text(label, fontSize = 11.sp, color = Color.Gray)
         Text(value, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+fun PhoneDetailRow(label: String, phoneNumber: String) {
+    val context = LocalContext.current
+    val hasValidPhone = phoneNumber.isNotBlank() && phoneNumber != "N/A"
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, fontSize = 11.sp, color = Color.Gray)
+            Text(
+                text = if (hasValidPhone) phoneNumber else "N/A",
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (hasValidPhone) MaterialTheme.colorScheme.primary else Color.Gray
+            )
+        }
+        if (hasValidPhone) {
+            FilledTonalButton(
+                onClick = {
+                    try {
+                        val dialIntent = android.content.Intent(android.content.Intent.ACTION_DIAL).apply {
+                            data = android.net.Uri.parse("tel:${phoneNumber.trim()}")
+                        }
+                        context.startActivity(dialIntent)
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "Cannot open dialer: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                modifier = Modifier.height(28.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = Color(0xFFE8F5E9),
+                    contentColor = Color(0xFF2E7D32)
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = "Call $label",
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Call", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }

@@ -1294,19 +1294,37 @@ class SyncRepository(
         }
 
         try {
+            val allLocalGrades = dao.getAllGradesSync().associateBy { it.id }
             for (remoteDto in remoteList) {
+                val effectiveClassName = remoteDto.className.ifBlank { remoteDto.name ?: "" }
+                if (effectiveClassName.isBlank()) {
+                    Log.w(TAG, "Skipping corrupted remote school_class (id=${remoteDto.id}, uuid=${remoteDto.uuid}): missing className")
+                    continue
+                }
+
+                val resolvedGradeId = remoteToLocalGradeIdCache[remoteDto.gradeId]
+                    ?: if (allLocalGrades.containsKey(remoteDto.gradeId)) remoteDto.gradeId else null
+
+                if (resolvedGradeId == null || !allLocalGrades.containsKey(resolvedGradeId)) {
+                    Log.w(TAG, "Skipping remote school_class '$effectiveClassName' (id=${remoteDto.id}): parent gradeId ${remoteDto.gradeId} not found in local grades table")
+                    continue
+                }
+
                 val existingLocal = if (remoteDto.uuid.isNotBlank()) dao.getClassByUuid(remoteDto.uuid) else null
-                val resolvedGradeId = remoteToLocalGradeIdCache[remoteDto.gradeId] ?: remoteDto.gradeId
-                if (existingLocal != null) {
-                    val remoteEntity = remoteDto.toEntity(existingLocalId = existingLocal.id, resolvedGradeId = resolvedGradeId)
-                    if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
-                        dao.insertClass(remoteEntity)
+                try {
+                    if (existingLocal != null) {
+                        val remoteEntity = remoteDto.toEntity(existingLocalId = existingLocal.id, resolvedGradeId = resolvedGradeId)
+                        if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
+                            dao.insertClass(remoteEntity)
+                            pulled++
+                        }
+                    } else {
+                        val newEntity = remoteDto.toEntity(resolvedGradeId = resolvedGradeId)
+                        dao.insertClass(newEntity)
                         pulled++
                     }
-                } else {
-                    val newEntity = remoteDto.toEntity(resolvedGradeId = resolvedGradeId)
-                    dao.insertClass(newEntity)
-                    pulled++
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to insert local school_class '$effectiveClassName': ${e.message}")
                 }
             }
         } catch (e: Exception) {

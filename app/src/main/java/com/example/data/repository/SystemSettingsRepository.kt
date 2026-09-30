@@ -1112,6 +1112,7 @@ class SystemSettingsRepository(
                                 rollNumber = obj.optInt("rollNumber", 1),
                                 parentName = obj.optString("parentName", ""),
                                 phone = obj.optString("phone", ""),
+                                secondaryPhone = obj.optString("secondaryPhone", ""),
                                 address = obj.optString("address", ""),
                                 status = obj.optString("status", "Active"),
                                 photoAvatarIndex = obj.optInt("photoAvatarIndex", 0),

@@ -63,6 +63,7 @@ ALTER TABLE public.students ADD COLUMN IF NOT EXISTS mother_name TEXT DEFAULT ''
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS date_of_birth TEXT DEFAULT '';
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS parent_name TEXT DEFAULT '';
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS parent_phone TEXT DEFAULT '';
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS secondary_phone TEXT DEFAULT '';
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Active';
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS photo_avatar_index INT DEFAULT 0;
