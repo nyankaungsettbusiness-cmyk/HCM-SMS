@@ -474,26 +474,8 @@ class SyncRepository(
                 )
                 var pushSuccess = false
 
-                // 1. Try upsert with onConflict = uuid
-                try {
-                    client.from("students").upsert(dto, onConflict = "uuid")
-                    pushSuccess = true
-                } catch (e: Exception) {
-                    Log.w(TAG, "Student upsert on uuid failed: ${e.message}")
-                }
-
-                // 2. Try upsert with onConflict = student_id
-                if (!pushSuccess && updatedStudent.studentCode.isNotBlank()) {
-                    try {
-                        client.from("students").upsert(dto, onConflict = "student_id")
-                        pushSuccess = true
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Student upsert on student_id failed: ${e.message}")
-                    }
-                }
-
-                // 3. Try direct update by remote ID if existing
-                if (!pushSuccess && existingRemote?.id != null) {
+                // 1. If existing remotely, perform direct UPDATE (avoids 409 conflict on uuid)
+                if (existingRemote?.id != null) {
                     try {
                         client.from("students").update(dto) {
                             filter { eq("id", existingRemote.id) }
@@ -504,22 +486,35 @@ class SyncRepository(
                     }
                 }
 
-                // 4. Try direct update by student_id / uuid
-                if (!pushSuccess && existingRemote != null) {
+                // 2. Direct update by uuid if existing
+                if (!pushSuccess && existingRemote != null && targetUuid.isNotBlank()) {
                     try {
-                        if (targetUuid.isNotBlank()) {
-                            client.from("students").update(dto) {
-                                filter { eq("uuid", targetUuid) }
-                            }
-                            pushSuccess = true
-                        } else if (updatedStudent.studentCode.isNotBlank()) {
-                            client.from("students").update(dto) {
-                                filter { eq("student_id", updatedStudent.studentCode) }
-                            }
-                            pushSuccess = true
+                        client.from("students").update(dto) {
+                            filter { eq("uuid", targetUuid) }
                         }
+                        pushSuccess = true
                     } catch (e: Exception) {
-                        Log.w(TAG, "Student update by code/uuid failed: ${e.message}")
+                        Log.w(TAG, "Student update by uuid failed: ${e.message}")
+                    }
+                }
+
+                // 3. Try upsert with onConflict = uuid
+                if (!pushSuccess) {
+                    try {
+                        client.from("students").upsert(dto, onConflict = "uuid")
+                        pushSuccess = true
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Student upsert on uuid failed: ${e.message}")
+                    }
+                }
+
+                // 4. Try upsert with onConflict = student_id
+                if (!pushSuccess && updatedStudent.studentCode.isNotBlank()) {
+                    try {
+                        client.from("students").upsert(dto, onConflict = "student_id")
+                        pushSuccess = true
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Student upsert on student_id failed: ${e.message}")
                     }
                 }
 
@@ -633,7 +628,8 @@ class SyncRepository(
                     }
                     val remoteEntity = remoteDto.toEntity(
                         existingLocalId = existingLocal.id,
-                        existingRollNumber = existingLocal.rollNumber
+                        existingRollNumber = existingLocal.rollNumber,
+                        existingLocal = existingLocal
                     )
                     
                     // DELETION TOMBSTONE PROTECTION:

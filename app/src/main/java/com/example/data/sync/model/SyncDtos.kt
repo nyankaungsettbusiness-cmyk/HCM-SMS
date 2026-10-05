@@ -20,6 +20,7 @@ data class StudentSupabaseDto(
     @SerialName("date_of_birth") val dateOfBirth: String = "",
     @SerialName("parent_name") val parentName: String = "",
     @SerialName("parent_phone") val parentPhone: String = "",
+    val phone: String? = null,
     @SerialName("secondary_phone") val secondaryPhone: String = "",
     val address: String = "",
     val status: String = "Active",
@@ -35,44 +36,64 @@ data class StudentSupabaseDto(
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("is_deleted") val isDeleted: Boolean = false
 ) {
-    fun toEntity(existingLocalId: Long = 0, existingRollNumber: Int = 0): StudentEntity {
+    fun toEntity(
+        existingLocalId: Long = 0,
+        existingRollNumber: Int = 0,
+        existingLocal: StudentEntity? = null
+    ): StudentEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val parsedCreatedAt = parseIsoToMillis(createdAt)
-        val effectiveCode = studentId.ifBlank { admissionNo ?: "" }
-        val effectiveDob = dateOfBirth.ifBlank { dob ?: "" }
+        val effectiveCode = studentId.ifBlank { admissionNo ?: existingLocal?.studentCode ?: "" }
+        val effectiveDob = dateOfBirth.ifBlank { dob ?: existingLocal?.dateOfBirth ?: "" }
         val effectiveParentName = parentName.ifBlank {
             when {
                 fatherName.isNotBlank() && motherName.isNotBlank() -> "$fatherName / $motherName"
                 fatherName.isNotBlank() -> fatherName
                 motherName.isNotBlank() -> motherName
-                else -> ""
+                else -> existingLocal?.parentName ?: ""
             }
+        }
+        val resolvedPhone = when {
+            parentPhone.isNotBlank() -> parentPhone
+            phone?.isNotBlank() == true -> phone
+            existingLocal?.phone?.isNotBlank() == true -> existingLocal.phone
+            else -> ""
+        }
+        val resolvedSecondaryPhone = when {
+            secondaryPhone.isNotBlank() -> secondaryPhone
+            existingLocal?.secondaryPhone?.isNotBlank() == true -> existingLocal.secondaryPhone
+            else -> ""
+        }
+        val resolvedAddress = when {
+            address.isNotBlank() -> address
+            existingLocal?.address?.isNotBlank() == true -> existingLocal.address
+            else -> ""
         }
         return StudentEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             studentCode = effectiveCode,
-            name = name,
-            gender = gender,
+            name = name.ifBlank { existingLocal?.name ?: "" },
+            gender = gender.ifBlank { existingLocal?.gender ?: "Male" },
             dateOfBirth = effectiveDob,
-            gradeName = grade,
-            className = className,
-            rollNumber = existingRollNumber,
+            gradeName = grade.ifBlank { existingLocal?.gradeName ?: "" },
+            className = className.ifBlank { existingLocal?.className ?: "" },
+            rollNumber = if (existingRollNumber > 0) existingRollNumber else (existingLocal?.rollNumber ?: 1),
             parentName = effectiveParentName,
-            phone = parentPhone,
-            secondaryPhone = secondaryPhone,
-            address = address,
-            status = status,
-            photoAvatarIndex = photoAvatarIndex,
-            stream = stream,
-            photoUrl = photoUrl,
-            studentNrc = studentNrc,
-            fatherName = fatherName,
-            fatherNrc = fatherNrc,
-            motherName = motherName,
-            motherNrc = motherNrc,
-            uuid = uuid.ifBlank { UUID.randomUUID().toString() },
-            createdAt = if (parsedCreatedAt > 0) parsedCreatedAt else System.currentTimeMillis(),
-            updatedAt = if (parsedUpdatedAt > 0) parsedUpdatedAt else System.currentTimeMillis(),
+            phone = resolvedPhone,
+            secondaryPhone = resolvedSecondaryPhone,
+            address = resolvedAddress,
+            status = status.ifBlank { existingLocal?.status ?: "Active" },
+            photoAvatarIndex = if (photoAvatarIndex != 0) photoAvatarIndex else (existingLocal?.photoAvatarIndex ?: 0),
+            stream = stream.ifBlank { existingLocal?.stream ?: "" },
+            photoUrl = photoUrl.ifBlank { existingLocal?.photoUrl ?: "" },
+            studentNrc = studentNrc.ifBlank { existingLocal?.studentNrc ?: "" },
+            fatherName = fatherName.ifBlank { existingLocal?.fatherName ?: "" },
+            fatherNrc = fatherNrc.ifBlank { existingLocal?.fatherNrc ?: "" },
+            motherName = motherName.ifBlank { existingLocal?.motherName ?: "" },
+            motherNrc = motherNrc.ifBlank { existingLocal?.motherNrc ?: "" },
+            uuid = uuid.ifBlank { existingLocal?.uuid ?: UUID.randomUUID().toString() },
+            createdAt = if (parsedCreatedAt > 0) parsedCreatedAt else (existingLocal?.createdAt ?: System.currentTimeMillis()),
+            updatedAt = if (parsedUpdatedAt > 0) parsedUpdatedAt else (existingLocal?.updatedAt ?: System.currentTimeMillis()),
             isDirty = false,
             isDeleted = isDeleted
         )

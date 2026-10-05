@@ -916,10 +916,10 @@ fun AddEditStudentDialog(
 ) {
     val context = LocalContext.current
     val yearPrefix = academicYear.substringBefore('-').ifBlank { "2026" }
-    var studentCode by remember { mutableStateOf(student?.studentCode ?: "HCM-$yearPrefix-${(100..999).random()}") }
-    var name by remember { mutableStateOf(student?.name ?: "") }
-    var gender by remember { mutableStateOf(student?.gender ?: "Male") }
-    var gradeName by remember { mutableStateOf(student?.gradeName ?: (grades.firstOrNull() ?: "G1")) }
+    var studentCode by remember(student) { mutableStateOf(student?.studentCode ?: "HCM-$yearPrefix-${(100..999).random()}") }
+    var name by remember(student) { mutableStateOf(student?.name ?: "") }
+    var gender by remember(student) { mutableStateOf(student?.gender ?: "Male") }
+    var gradeName by remember(student) { mutableStateOf(student?.gradeName ?: (grades.firstOrNull() ?: "G1")) }
     val defaultBirthYear = when (gradeName) {
         "KG" -> 2021
         "G1" -> 2020
@@ -936,20 +936,20 @@ fun AddEditStudentDialog(
         "G12" -> 2009
         else -> 2016
     }
-    var dob by remember { mutableStateOf(student?.dateOfBirth?.ifBlank { "$defaultBirthYear-06-01" } ?: "$defaultBirthYear-06-01") }
-    var stream by remember { mutableStateOf(student?.stream ?: if (SchoolPolicy.isHighSchool(gradeName)) "STEAMS-1" else "") }
-    var className by remember { mutableStateOf(student?.className ?: "A") }
-    var rollNumber by remember { mutableStateOf(student?.rollNumber?.toString() ?: "1") }
-    var photoUrl by remember { mutableStateOf(student?.photoUrl ?: "") }
-    var studentNrc by remember { mutableStateOf(student?.studentNrc ?: "") }
-    var fatherName by remember { mutableStateOf(student?.fatherName ?: "") }
-    var fatherNrc by remember { mutableStateOf(student?.fatherNrc ?: "") }
-    var motherName by remember { mutableStateOf(student?.motherName ?: "") }
-    var motherNrc by remember { mutableStateOf(student?.motherNrc ?: "") }
-    var phone by remember { mutableStateOf(student?.phone ?: "") }
-    var secondaryPhone by remember { mutableStateOf(student?.secondaryPhone ?: "") }
-    var address by remember { mutableStateOf(student?.address ?: "") }
-    var status by remember { mutableStateOf(student?.status ?: "Active") }
+    var dob by remember(student) { mutableStateOf(student?.dateOfBirth?.ifBlank { "$defaultBirthYear-06-01" } ?: "$defaultBirthYear-06-01") }
+    var stream by remember(student) { mutableStateOf(student?.stream ?: if (SchoolPolicy.isHighSchool(gradeName)) "STEAMS-1" else "") }
+    var className by remember(student) { mutableStateOf(student?.className ?: "A") }
+    var rollNumber by remember(student) { mutableStateOf(student?.rollNumber?.toString() ?: "1") }
+    var photoUrl by remember(student) { mutableStateOf(student?.photoUrl ?: "") }
+    var studentNrc by remember(student) { mutableStateOf(student?.studentNrc ?: "") }
+    var fatherName by remember(student) { mutableStateOf(student?.fatherName ?: "") }
+    var fatherNrc by remember(student) { mutableStateOf(student?.fatherNrc ?: "") }
+    var motherName by remember(student) { mutableStateOf(student?.motherName ?: "") }
+    var motherNrc by remember(student) { mutableStateOf(student?.motherNrc ?: "") }
+    var phone by remember(student) { mutableStateOf(student?.phone ?: "") }
+    var secondaryPhone by remember(student) { mutableStateOf(student?.secondaryPhone ?: "") }
+    var address by remember(student) { mutableStateOf(student?.address ?: "") }
+    var status by remember(student) { mutableStateOf(student?.status ?: "Active") }
 
     val photoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -1355,7 +1355,7 @@ fun StudentDetailDialog(
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Profile", "Academic", "Attendance", "HCM Holistic", "Reports")
+    val tabs = listOf("Profile", "Academic", "Attendance", "HCM Holistic", "Quick Review")
     val scrollState = rememberScrollState()
 
     // Reset scroll when switching tabs so each tab starts at the top
@@ -1487,7 +1487,15 @@ fun StudentDetailDialog(
                         )
                         2 -> AttendanceDataTab(student, academicYear, attendanceRecords)
                         3 -> HcmHolisticTab(student, academicYear, holisticResults, teacherComments)
-                        4 -> ReportInfoTab(student, academicYear, assessmentResults, reportHistory)
+                        4 -> QuickReviewTab(
+                            student = student,
+                            academicYear = academicYear,
+                            studentMarks = studentMarks,
+                            assessments = assessments,
+                            attendanceRecords = attendanceRecords,
+                            holisticResults = holisticResults,
+                            reportHistory = reportHistory
+                        )
                     }
                 }
             }
@@ -1684,61 +1692,86 @@ fun AcademicDataTab(
             }
         }
 
-        // 2. Exam Period / Assessment Selector (if multiple assessments available)
-        if (relevantAssessments.size > 1) {
+        // 2. Exam Period / Assessment Selector (if assessments exist)
+        if (relevantAssessments.isNotEmpty()) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.EventNote,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Text(
-                            text = "Exam Period:",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.EventNote,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "စစ်ဆေးပြီးသော စာမေးပွဲများ (Exam Periods):",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        if (relevantAssessments.size > 1) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = "${relevantAssessments.size} ခု",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
 
                     Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        relevantAssessments.forEach { asm ->
+                        relevantAssessments.forEachIndexed { index, asm ->
                             val isSelected = selectedAssessmentId == asm.id
+                            val isLatest = index == 0
+                            val baseName = asm.assessmentName.ifBlank { asm.assessmentType }
                             FilterChip(
                                 selected = isSelected,
                                 onClick = { selectedAssessmentId = asm.id },
                                 label = {
                                     Text(
-                                        asm.assessmentName.ifBlank { asm.assessmentType },
-                                        fontSize = 10.sp,
+                                        text = if (isLatest && relevantAssessments.size > 1) "$baseName (Latest)" else baseName,
+                                        fontSize = 10.5.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )
                                 },
-                                modifier = Modifier.height(28.dp),
+                                modifier = Modifier.height(30.dp),
                                 leadingIcon = if (isSelected) {
                                     {
                                         Icon(
-                                            Icons.Default.Check,
+                                            Icons.Default.CheckCircle,
                                             contentDescription = null,
-                                            modifier = Modifier.size(12.dp)
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(13.dp)
                                         )
                                     }
                                 } else null
@@ -1843,13 +1876,14 @@ fun AcademicDataTab(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 2.dp, vertical = 2.dp),
+                .padding(horizontal = 2.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
+                modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.FactCheck,
@@ -1859,26 +1893,46 @@ fun AcademicDataTab(
                 )
                 Text(
                     text = "ဘာသာရပ်အလိုက် မေးခွန်းရမှတ်နှင့် အားနည်းချက်",
-                    fontSize = 12.sp,
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
+            Spacer(modifier = Modifier.width(6.dp))
+
             val allExpanded = subjects.all { expandedSubjects[it] == true }
-            TextButton(
-                onClick = {
-                    val target = !allExpanded
-                    subjects.forEach { expandedSubjects[it] = target }
-                },
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                modifier = Modifier.height(26.dp)
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable {
+                        val target = !allExpanded
+                        subjects.forEach { expandedSubjects[it] = target }
+                    }
             ) {
-                Text(
-                    text = if (allExpanded) "အားလုံးပိတ်ရန်" else "အားလုံးဖွင့်ရန်",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = if (allExpanded) Icons.Default.UnfoldLess else Icons.Default.UnfoldMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = if (allExpanded) "အားလုံးပိတ်" else "အားလုံးဖွင့်",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
@@ -2583,79 +2637,491 @@ fun PillarRatingRow(pillarName: String, stars: Int, maxStars: Int = 5) {
 }
 
 @Composable
-fun ReportInfoTab(
+fun QuickReviewTab(
     student: StudentEntity,
     academicYear: String,
-    assessmentResults: List<AssessmentResultSummaryEntity> = emptyList(),
+    studentMarks: List<StudentMarkEntity> = emptyList(),
+    assessments: List<AssessmentEntity> = emptyList(),
+    attendanceRecords: List<AttendanceRecordEntity> = emptyList(),
+    holisticResults: List<HolisticResultEntity> = emptyList(),
     reportHistory: List<ReportGenerationHistoryEntity> = emptyList()
 ) {
+    // 1. Attendance Auto Review Calculations
+    val totalAttendance = attendanceRecords.size
+    val presentCount = attendanceRecords.count { it.status == AttendanceStatus.PRESENT }
+    val lateCount = attendanceRecords.count { it.status == AttendanceStatus.LATE }
+    val absentCount = attendanceRecords.count { it.status == AttendanceStatus.ABSENT }
+    val leaveCount = attendanceRecords.count { it.status == AttendanceStatus.LEAVE }
+    val attendancePct = if (totalAttendance > 0) {
+        ((presentCount + lateCount).toDouble() / totalAttendance) * 100.0
+    } else null
+
+    // 2. Academic Auto Review Calculations (Based on latest assessment marks)
+    val markAssessmentIds = remember(studentMarks) { studentMarks.map { it.assessmentId }.toSet() }
+    val latestAssessment = remember(assessments, markAssessmentIds) {
+        assessments.firstOrNull { it.id in markAssessmentIds } ?: assessments.firstOrNull()
+    }
+    val relevantMarks = remember(studentMarks, latestAssessment) {
+        if (latestAssessment != null) {
+            studentMarks.filter { it.assessmentId == latestAssessment.id }
+        } else {
+            studentMarks
+        }
+    }
+    val validMarks = remember(relevantMarks) {
+        relevantMarks.filter { it.obtainedMarks != null }
+    }
+    val totalObtained = validMarks.sumOf { it.obtainedMarks ?: 0.0 }
+    val totalMax = validMarks.sumOf { it.maxMarks.coerceAtLeast(1) }
+    val academicPct = if (totalMax > 0 && validMarks.isNotEmpty()) {
+        (totalObtained / totalMax) * 100.0
+    } else null
+
+    val subjectPerformance = remember(validMarks) {
+        validMarks.map { mark ->
+            val pct = ((mark.obtainedMarks ?: 0.0) / mark.maxMarks.coerceAtLeast(1)) * 100.0
+            Triple(mark.subjectName, pct, mark)
+        }.sortedByDescending { it.second }
+    }
+    val strengths = remember(subjectPerformance) { subjectPerformance.filter { it.second >= 75.0 } }
+    val weaknesses = remember(subjectPerformance) { subjectPerformance.filter { it.second < 50.0 } }
+
+    // 3. Holistic HCM Auto Review Calculations
+    val ratedHolistic = remember(holisticResults) { holisticResults.filter { it.ratingStars > 0 } }
+    val holisticAvg: Double? = remember(ratedHolistic) {
+        if (ratedHolistic.isNotEmpty()) ratedHolistic.map { it.ratingStars }.average() else null
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (assessmentResults.isEmpty() && reportHistory.isEmpty()) {
+        // --- 1. Top 3 KPI Snapshot Cards ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // KPI 1: Academics
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(8.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                colors = CardDefaults.cardColors(
+                    containerColor = when {
+                        academicPct == null -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        academicPct >= 75.0 -> Color(0xFFE8F5E9)
+                        academicPct >= 50.0 -> Color(0xFFE3F2FD)
+                        else -> Color(0xFFFFEBEE)
+                    }
+                )
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                    modifier = Modifier.padding(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Assessment,
+                        imageVector = Icons.Default.School,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(32.dp)
+                        tint = when {
+                            academicPct == null -> Color.Gray
+                            academicPct >= 75.0 -> Color(0xFF2E7D32)
+                            academicPct >= 50.0 -> Color(0xFF1565C0)
+                            else -> Color(0xFFC62828)
+                        },
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text("Academics", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                    Text(
+                        text = if (academicPct != null) "${academicPct.toInt()}%" else "Pending",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            academicPct == null -> Color.Gray
+                            academicPct >= 75.0 -> Color(0xFF1B5E20)
+                            academicPct >= 50.0 -> Color(0xFF0D47A1)
+                            else -> Color(0xFFB71C1C)
+                        }
                     )
                     Text(
-                        text = "No Assessment or Report Records",
-                        fontSize = 13.sp,
+                        text = when {
+                            academicPct == null -> "မဖြေရသေး"
+                            academicPct >= 75.0 -> "Distinction"
+                            academicPct >= 50.0 -> "Pass"
+                            else -> "Needs Support"
+                        },
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = when {
+                            academicPct == null -> Color.Gray
+                            academicPct >= 75.0 -> Color(0xFF2E7D32)
+                            academicPct >= 50.0 -> Color(0xFF1565C0)
+                            else -> Color(0xFFC62828)
+                        }
+                    )
+                }
+            }
+
+            // KPI 2: Attendance
+            Card(
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = when {
+                        attendancePct == null -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        attendancePct >= 90.0 -> Color(0xFFE8F5E9)
+                        attendancePct >= 75.0 -> Color(0xFFFFF8E1)
+                        else -> Color(0xFFFFEBEE)
+                    }
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarToday,
+                        contentDescription = null,
+                        tint = when {
+                            attendancePct == null -> Color.Gray
+                            attendancePct >= 90.0 -> Color(0xFF2E7D32)
+                            attendancePct >= 75.0 -> Color(0xFFF57C00)
+                            else -> Color(0xFFC62828)
+                        },
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text("Attendance", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                    Text(
+                        text = if (attendancePct != null) "${attendancePct.toInt()}%" else "Pending",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            attendancePct == null -> Color.Gray
+                            attendancePct >= 90.0 -> Color(0xFF1B5E20)
+                            attendancePct >= 75.0 -> Color(0xFFE65100)
+                            else -> Color(0xFFB71C1C)
+                        }
+                    )
+                    Text(
+                        text = when {
+                            attendancePct == null -> "မှတ်တမ်းမရှိ"
+                            attendancePct >= 90.0 -> "Regular"
+                            attendancePct >= 75.0 -> "Moderate"
+                            else -> "Low Alert"
+                        },
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = when {
+                            attendancePct == null -> Color.Gray
+                            attendancePct >= 90.0 -> Color(0xFF2E7D32)
+                            attendancePct >= 75.0 -> Color(0xFFF57C00)
+                            else -> Color(0xFFC62828)
+                        }
+                    )
+                }
+            }
+
+            // KPI 3: Holistic HCM
+            Card(
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = when {
+                        holisticAvg == null -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        holisticAvg >= 4.0 -> Color(0xFFFFF8E1)
+                        holisticAvg >= 3.0 -> Color(0xFFE8F5E9)
+                        else -> Color(0xFFFFEBEE)
+                    }
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Stars,
+                        contentDescription = null,
+                        tint = when {
+                            holisticAvg == null -> Color.Gray
+                            holisticAvg >= 4.0 -> Color(0xFFFFA000)
+                            holisticAvg >= 3.0 -> Color(0xFF2E7D32)
+                            else -> Color(0xFFE53935)
+                        },
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text("Holistic HCM", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                    Text(
+                        text = if (holisticAvg != null) String.format(java.util.Locale.US, "%.1f ★", holisticAvg) else "Pending",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            holisticAvg == null -> Color.Gray
+                            holisticAvg >= 4.0 -> Color(0xFFE65100)
+                            holisticAvg >= 3.0 -> Color(0xFF1B5E20)
+                            else -> Color(0xFFB71C1C)
+                        }
+                    )
+                    Text(
+                        text = when {
+                            holisticAvg == null -> "မစစ်ရသေး"
+                            holisticAvg >= 4.0 -> "Very Good"
+                            holisticAvg >= 3.0 -> "Good Growth"
+                            else -> "Encourage"
+                        },
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = when {
+                            holisticAvg == null -> Color.Gray
+                            holisticAvg >= 4.0 -> Color(0xFFE65100)
+                            holisticAvg >= 3.0 -> Color(0xFF2E7D32)
+                            else -> Color(0xFFE53935)
+                        }
+                    )
+                }
+            }
+        }
+
+        // --- 2. Academic Auto Review Card (Strengths & Weaknesses) ---
+        DetailSectionCard(title = "ပညာရေး အလိုအလျောက် သုံးသပ်ချက် (Academic Auto Review)") {
+            val examName = latestAssessment?.assessmentName?.ifBlank { latestAssessment.assessmentType } ?: "Recent Assessment"
+            Text(
+                text = "စိစစ်ထားသော စာမေးပွဲ: $examName ($academicYear)",
+                fontSize = 10.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium
+            )
+
+            if (validMarks.isEmpty()) {
+                Text(
+                    text = "ဤကျောင်းသားအတွက် စာမေးပွဲရမှတ်များ ထည့်သွင်းထားခြင်း မရှိသေးပါ။ Marks Entry တွင် ရမှတ်များ ဖြည့်သွင်းပြီးပါက အလိုအလျောက် သုံးသပ်ချက် ထွက်ရှိလာမည် ဖြစ်ပါသည်။",
+                    fontSize = 11.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            } else {
+                // Summary Stat Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "စုစုပေါင်း ရမှတ်: ${totalObtained.toInt()} / $totalMax",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "No exam marks, assessment summaries, or generated report cards exist for this student in $academicYear yet.",
+                        text = "ပျမ်းမျှ: ${String.format(java.util.Locale.US, "%.1f%%", academicPct ?: 0.0)}",
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.outline,
-                        textAlign = TextAlign.Center
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 2.dp))
+
+                // Strengths Section
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(15.dp))
+                    Text("🌟 ထူးချွန်အားသာချက် (Top Strengths):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                }
+                if (strengths.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        strengths.forEach { (subject, pct, _) ->
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFE8F5E9),
+                                border = BorderStroke(0.5.dp, Color(0xFFA5D6A7))
+                            ) {
+                                Text(
+                                    text = "$subject (${pct.toInt()}%)",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1B5E20),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = "အထက်ပါ ဘာသာရပ်များတွင် စံသတ်မှတ်ချက်ထက် သာလွန်စွာ ရမှတ်ကောင်းမွန်ပါသည် ✨",
+                        fontSize = 10.sp,
+                        color = Color(0xFF2E7D32)
+                    )
+                } else {
+                    Text(
+                        text = "လက်ရှိတွင် ၇၅% နှင့်အထက် သီးသန့် ထူးချွန်ဘာသာရပ် မတွေ့ရှိသေးပါ (ပုံမှန်အဆင့်တွင် ရှိနေပါသည်)။",
+                        fontSize = 10.sp,
+                        color = Color.Gray
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Weaknesses / Areas for Improvement Section
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = if (weaknesses.isNotEmpty()) Color(0xFFC62828) else Color(0xFF2E7D32), modifier = Modifier.size(15.dp))
+                    Text(
+                        text = if (weaknesses.isNotEmpty()) "⚠️ အထူးဂရုပြုရန် အားနည်းချက် (Support Needed):" else "✅ အားနည်းချက် သုံးသပ်ချက်:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (weaknesses.isNotEmpty()) Color(0xFFC62828) else Color(0xFF2E7D32)
+                    )
+                }
+                if (weaknesses.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        weaknesses.forEach { (subject, pct, _) ->
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFFFEBEE),
+                                border = BorderStroke(0.5.dp, Color(0xFFEF9A9A))
+                            ) {
+                                Text(
+                                    text = "$subject (${pct.toInt()}%)",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFC62828),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = "အထက်ပါ ဘာသာရပ်များတွင် ၅၀% အောက် ဖြစ်နေသဖြင့် အခြေခံသဘောတရားနှင့် လေ့ကျင့်ခန်းများ သီးသန့် အားဖြည့်ပေးရန် လိုအပ်ပါသည် ⚠️",
+                        fontSize = 10.sp,
+                        color = Color(0xFFB71C1C)
+                    )
+                } else {
+                    Text(
+                        text = "ဘာသာရပ်အားလုံးတွင် အောင်မှတ် (၅၀% နှင့်အထက်) ရရှိထားပြီး စွမ်းဆောင်ရည် မျှတစွာ ကောင်းမွန်ပါသည် ✅",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF1B5E20)
                     )
                 }
             }
-        } else {
-            if (assessmentResults.isNotEmpty()) {
-                DetailSectionCard(title = "Assessment Results ($academicYear)") {
-                    assessmentResults.forEachIndexed { idx, result ->
-                        DetailRow("Total Obtained", "${result.totalObtained.toInt()} / ${result.totalMax}")
-                        DetailRow("Percentage", String.format(java.util.Locale.US, "%.1f%%", result.percentage))
-                        DetailRow("Standing", result.overallResult)
-                        if (idx < assessmentResults.size - 1) {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-            }
+        }
 
-            if (reportHistory.isNotEmpty()) {
-                DetailSectionCard(title = "Generated Report Cards") {
+        // --- 3. Attendance Auto Review Card ---
+        DetailSectionCard(title = "ကျောင်းတက်ရောက်မှု သုံးသပ်ချက် (Attendance Auto Review)") {
+            if (totalAttendance == 0) {
+                Text(
+                    text = "ကျောင်းခေါ်ချိန် မှတ်တမ်း မရှိသေးပါ။ Attendance မော်ဂျူးတွင် ကျောင်းခေါ်ချိန် စာရင်းသွင်းပြီးပါက အလိုအလျောက် သုံးသပ်ချက် ပေါ်လာမည်ဖြစ်ပါသည်။",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    DetailRow("စာရင်းသွင်းထားသော ရက်ပေါင်း", "$totalAttendance ရက်")
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    DetailRow("လာရောက်: $presentCount ရက်", "ခွင့်: $leaveCount ရက် • ပျက်: $absentCount ရက်")
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 2.dp))
+                val attMessage = when {
+                    attendancePct != null && attendancePct >= 90.0 ->
+                        "✨ ပုံမှန် ကျောင်းတက်ရောက်မှုနှုန်း (${attendancePct.toInt()}%) အထူးကောင်းမွန်ပြီး တည်ငြိမ်စွာ ရှိနေပါသည်။"
+                    attendancePct != null && attendancePct >= 75.0 ->
+                        "ကျောင်းတက်ရောက်မှုနှုန်း (${attendancePct.toInt()}%) သင့်တင့်သောအဆင့်တွင် ရှိပါသည်။"
+                    else ->
+                        "⚠️ ကျောင်းခေါ်ချိန် (${attendancePct?.toInt() ?: 0}%) လျော့နည်းနေသဖြင့် ပျက်ကွက်မှု လျော့ကျစေရန် အထူးဂရုပြုရန် လိုအပ်ပါသည်။"
+                }
+                Text(
+                    text = attMessage,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if ((attendancePct ?: 0.0) >= 90.0) Color(0xFF1B5E20) else if ((attendancePct ?: 0.0) >= 75.0) Color(0xFF0D47A1) else Color(0xFFC62828)
+                )
+            }
+        }
+
+        // --- 4. Holistic Growth Auto Review Card ---
+        DetailSectionCard(title = "ဘက်စုံစွမ်းရည် သုံးသပ်ချက် (Holistic Growth Review)") {
+            if (holisticAvg == null) {
+                Text(
+                    text = "ဘက်စုံစွမ်းရည် (HCM) အကဲဖြတ်ထားခြင်း မရှိသေးပါ။ Holistic မော်ဂျူးတွင် အကဲဖြတ်ပြီးပါက သုံးသပ်ချက် ပေါ်လာမည်ဖြစ်ပါသည်။",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+            } else {
+                DetailRow("အကဲဖြတ်ထားသော စရိုက်လက္ခဏာ အရေအတွက်", "${ratedHolistic.size} ခု")
+                DetailRow("ပျမ်းမျှ ကြယ်ပွင့် အဆင့်", String.format(java.util.Locale.US, "%.1f ★ / 5.0 ★", holisticAvg))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 2.dp))
+                val holMessage = when {
+                    holisticAvg >= 4.0 ->
+                        "🌟 စာရိတ္တ၊ ပေါင်းသင်းဆက်ဆံရေးနှင့် ဘက်စုံစွမ်းရည် ဖွံ့ဖြိုးမှု အထူးထူးချွန်သော အဆင့်တွင် ရှိနေပါသည်။"
+                    holisticAvg >= 3.0 ->
+                        "စရိုက်လက္ခဏာနှင့် စွမ်းရည်ဖွံ့ဖြိုးမှု တိုးတက်မှုနှုန်း ကောင်းမွန်ပါသည် ✨"
+                    else ->
+                        "အချို့သော စရိုက်လက္ခဏာများတွင် အပြုသဘောဆောင်သော အားပေးမြှင့်တင်မှုများ ပြုလုပ်ပေးရန် လိုအပ်ပါသည်။"
+                }
+                Text(
+                    text = holMessage,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (holisticAvg >= 4.0) Color(0xFFE65100) else if (holisticAvg >= 3.0) Color(0xFF1B5E20) else Color(0xFFC62828)
+                )
+            }
+        }
+
+        // --- 5. Published Report Cards (Compact & Non-cluttered) ---
+        if (reportHistory.isNotEmpty()) {
+            DetailSectionCard(title = "ထုတ်ယူပြီးသော အစီရင်ခံစာများ (Published Reports)") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     reportHistory.forEach { history ->
-                        val dateStr = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.US)
-                            .format(java.util.Date(history.generatedAtTimestamp))
-                        DetailRow(
-                            label = "${history.assessmentPeriodName} (${history.academicYear})",
-                            value = "${history.status} • $dateStr"
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
+                                Text(
+                                    text = history.assessmentPeriodName.ifBlank { "Report Card" },
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 }
             }
