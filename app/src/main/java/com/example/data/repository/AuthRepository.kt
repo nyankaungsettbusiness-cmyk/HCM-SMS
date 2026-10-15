@@ -39,6 +39,11 @@ class AuthRepository(private val userDao: UserDao) {
         val client = SupabaseClientManager.getInstance()
             ?: return Result.failure(Exception("Supabase client is not configured."))
 
+        if (!com.example.data.sync.SyncRepository.isHostReachable(SupabaseClientManager.supabaseUrl)) {
+            Log.d("AuthRepository", "Supabase host unreachable. Operating offline with local database.")
+            return Result.failure(Exception("Supabase host unreachable: operating in offline-first mode."))
+        }
+
         return try {
             val remoteList = client.from("users").select().decodeList<UserSupabaseDto>()
             var count = 0
@@ -62,7 +67,7 @@ class AuthRepository(private val userDao: UserDao) {
             Log.i("AuthRepository", "Successfully synced $count user accounts from Supabase cloud.")
             Result.success(count)
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Failed to sync user accounts from cloud: ${e.message}", e)
+            Log.w("AuthRepository", "Failed to sync user accounts from cloud: ${e.message}")
             Result.failure(e)
         }
     }

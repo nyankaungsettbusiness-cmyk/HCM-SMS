@@ -11,6 +11,10 @@ import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Count
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.InetAddress
+import java.net.URI
 import java.util.UUID
 
 sealed class SyncResult {
@@ -60,6 +64,30 @@ class SyncRepository(
         private val remoteToLocalGradeIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
         private val localToRemoteSubjectIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
         private val remoteToLocalSubjectIdCache = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+
+        @Volatile
+        private var lastHostCheckTime: Long = 0L
+        @Volatile
+        private var lastHostCheckResult: Boolean = false
+        private const val HOST_CHECK_CACHE_MS = 15_000L
+
+        suspend fun isHostReachable(urlStr: String): Boolean = withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            if (now - lastHostCheckTime < HOST_CHECK_CACHE_MS) {
+                return@withContext lastHostCheckResult
+            }
+            val reachable = try {
+                val uri = URI(urlStr)
+                val host = uri.host ?: return@withContext false
+                val address = InetAddress.getByName(host)
+                address != null && !address.hostAddress.isNullOrBlank()
+            } catch (e: Exception) {
+                false
+            }
+            lastHostCheckTime = now
+            lastHostCheckResult = reachable
+            reachable
+        }
     }
 
     /**
@@ -67,6 +95,10 @@ class SyncRepository(
      */
     suspend fun testConnectivity(): Boolean {
         val client = SupabaseClientManager.getInstance() ?: return false
+        if (!isHostReachable(SupabaseClientManager.supabaseUrl)) {
+            Log.d(TAG, "Supabase host unreachable (${SupabaseClientManager.supabaseUrl}). Operating in offline mode.")
+            return false
+        }
         return try {
             client.from("students").select {
                 count(Count.EXACT)
@@ -74,7 +106,7 @@ class SyncRepository(
             }
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Supabase connectivity test failed: ${e.message}", e)
+            Log.w(TAG, "Supabase connectivity test note: ${e.message}")
             false
         }
     }
@@ -188,6 +220,11 @@ class SyncRepository(
     suspend fun syncAllEntities(): SyncResult {
         val client = SupabaseClientManager.getInstance()
             ?: return SyncResult.Error("Supabase client is not configured with valid URL/Key")
+
+        if (!isHostReachable(SupabaseClientManager.supabaseUrl)) {
+            Log.d(TAG, "Supabase host unreachable (${SupabaseClientManager.supabaseUrl}). Skipping cloud sync to operate in offline-first mode.")
+            return SyncResult.Error("Supabase host unreachable (Offline mode)")
+        }
 
         return try {
             var totalPushed = 0
@@ -347,6 +384,10 @@ class SyncRepository(
      */
     suspend fun syncSingleTable(tableName: String): Pair<Int, Int> {
         val client = SupabaseClientManager.getInstance() ?: return Pair(0, 0)
+        if (!isHostReachable(SupabaseClientManager.supabaseUrl)) {
+            Log.d(TAG, "syncSingleTable($tableName): Supabase host unreachable. Operating offline.")
+            return Pair(0, 0)
+        }
         return try {
             when (tableName.trim().lowercase()) {
                 "students", "student" -> syncStudentsInternal(client)

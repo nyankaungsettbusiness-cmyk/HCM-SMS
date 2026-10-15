@@ -343,7 +343,7 @@ object SyncManager {
      * Flushes pending items in the outbox queue to Supabase.
      */
     suspend fun processOutboxQueue(context: Context): Int {
-        if (!_isNetworkAvailable.value || !SupabaseClientManager.isConfigured()) {
+        if (!_isNetworkAvailable.value || !SupabaseClientManager.isConfigured() || !SyncRepository.isHostReachable(SupabaseClientManager.supabaseUrl)) {
             return 0
         }
         val db = AppDatabase.getInstance(context)
@@ -385,11 +385,11 @@ object SyncManager {
             ?: return SyncResult.Error("Context not available for sync")
         appContext = ctx
 
-        if (!_isNetworkAvailable.value) {
+        if (!_isNetworkAvailable.value || !SyncRepository.isHostReachable(SupabaseClientManager.supabaseUrl)) {
             _connectionMode.value = SupabaseConnectionMode.OFFLINE
             val dirty = AppDatabase.getInstance(ctx).syncOutboxDao().getPendingCount()
             _syncState.value = SyncStatus.OfflinePending(dirty)
-            return SyncResult.Error("Offline: Device is operating with local cache.")
+            return SyncResult.Error("Offline: Supabase host unreachable. Operating in local cache mode.")
         }
 
         return globalSyncMutex.withLock {

@@ -22,8 +22,8 @@ object SupabaseClientManager {
     @Volatile
     private var clientInstance: SupabaseClient? = null
 
-    var supabaseUrl: String = BuildConfig.SUPABASE_URL.ifBlank { "https://gfwdxcmqdgmubotiuxzl.supabase.co" }
-    var supabaseKey: String = BuildConfig.SUPABASE_ANON_KEY.ifBlank { "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdmd2R4Y21xZGdtdWJvdGl1eHpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4NzY0MjUsImV4cCI6MjEwNDQ1MjQyNX0.l4kxnVAPmeBF1OS6_nCj36bPRZdHKPDuhZiY3yAJU7o" }
+    var supabaseUrl: String = BuildConfig.SUPABASE_URL.ifBlank { "https://wsyljsocuvrzhmdcygcu.supabase.co" }
+    var supabaseKey: String = BuildConfig.SUPABASE_ANON_KEY.ifBlank { "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzeWxqc29jdXZyemhtZGN5Z2N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyNDk0MTUsImV4cCI6MjEwMTgyNTQxNX0.VJvc1ZOxXux-aO5NqCzFxqN3eoCVlx21hvj38mseiSY" }
 
     /**
      * Checks whether valid Supabase credentials (URL and Anon Key) are provided.
