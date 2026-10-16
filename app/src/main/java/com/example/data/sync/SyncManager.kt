@@ -437,9 +437,13 @@ object SyncManager {
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "⚡ Delta Sync error: ${e.message}", e)
+                if (e is java.net.UnknownHostException || e is java.io.IOException || e.message?.contains("Unable to resolve host", ignoreCase = true) == true) {
+                    Log.i(TAG, "⚡ Delta Sync deferred: network unreachable (${e.message})")
+                } else {
+                    Log.w(TAG, "⚡ Delta Sync warning: ${e.message}")
+                }
                 _syncState.value = SyncStatus.SyncFailed(e.message ?: "Sync error")
-                SyncResult.Error(e.message ?: "Sync error")
+                SyncResult.Error(e.message ?: "Sync error", e)
             } finally {
                 // Guarantee the sync indicator never stays in SYNCING state
                 if (_connectionMode.value == SupabaseConnectionMode.SYNCING) {

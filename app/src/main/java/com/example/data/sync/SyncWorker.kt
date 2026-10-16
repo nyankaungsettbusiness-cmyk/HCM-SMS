@@ -29,24 +29,33 @@ class SyncWorker(
                     Result.success()
                 }
                 is SyncResult.Error -> {
-                    Log.e(TAG, "Background sync failed: ${result.message}")
-                    if (runAttemptCount < 3) {
-                        Result.retry()
+                    if (result.message.contains("offline", ignoreCase = true) ||
+                        result.message.contains("unreachable", ignoreCase = true) ||
+                        result.message.contains("not configured", ignoreCase = true) ||
+                        result.message.contains("UnknownHost", ignoreCase = true) ||
+                        result.cause is java.net.UnknownHostException ||
+                        result.cause is java.io.IOException
+                    ) {
+                        Log.i(TAG, "Background sync deferred: device is offline or host unreachable.")
                     } else {
-                        Result.failure()
+                        Log.w(TAG, "Background sync did not finish: ${result.message}")
                     }
+                    Result.success()
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             Log.i(TAG, "Background sync worker was cancelled.")
-            Result.retry()
+            Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Exception during background sync worker: ${e.message}", e)
-            if (runAttemptCount < 3) {
-                Result.retry()
+            if (e is java.net.UnknownHostException ||
+                e is java.io.IOException ||
+                e.message?.contains("Unable to resolve host", ignoreCase = true) == true
+            ) {
+                Log.i(TAG, "Background sync deferred due to network condition: ${e.message}")
             } else {
-                Result.failure()
+                Log.w(TAG, "Exception during background sync worker: ${e.message}")
             }
+            Result.success()
         }
     }
 }
