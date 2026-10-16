@@ -38,8 +38,8 @@ class SyncPushTest {
 
         // Ensure Supabase credentials are configured
         SupabaseClientManager.configure(
-            url = "https://wsyljsocuvrzhmdcygcu.supabase.co",
-            key = "sb_publishable_GPNSdhuzGtUsSkHWl8zuwg_wR8CZ9P_"
+            url = "https://gfwdxcmqdgmubotiuxzl.supabase.co",
+            key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdmd2R4Y21xZGdtdWJvdGl1eHpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4NzY0MjUsImV4cCI6MjEwNDQ1MjQyNX0.l4kxnVAPmeBF1OS6_nCj36bPRZdHKPDuhZiY3yAJU7o"
         )
     }
 
