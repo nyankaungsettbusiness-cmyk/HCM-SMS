@@ -411,8 +411,8 @@ object SyncManager {
             Log.i(TAG, "⚡ Executing Automatic Delta Sync (dirty=$dirtyCount)...")
 
             try {
-                // 30-second guard to guarantee sync never hangs
-                val result = kotlinx.coroutines.withTimeoutOrNull(30_000L) {
+                // 90-second guard to guarantee sync has sufficient time on mobile networks
+                val result = kotlinx.coroutines.withTimeoutOrNull(90_000L) {
                     // 1. Flush Outbox first
                     processOutboxQueue(ctx)
 
