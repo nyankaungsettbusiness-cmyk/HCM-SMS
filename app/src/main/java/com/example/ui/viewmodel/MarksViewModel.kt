@@ -457,6 +457,7 @@ class MarksViewModel(
     fun triggerForceSync(onComplete: () -> Unit = {}) {
         viewModelScope.launch {
             marksRepository.forceResyncAllMarks()
+            com.example.data.sync.SyncManager.triggerTableSyncAsync("student_marks", forceImmediate = true)
             onComplete()
         }
     }

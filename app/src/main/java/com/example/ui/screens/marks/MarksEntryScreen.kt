@@ -65,6 +65,24 @@ fun MarksEntryScreen(
     var isLocked by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
+    // Screen-scoped Supabase Realtime for collaborative marks updates
+    DisposableEffect(Unit) {
+        com.example.data.sync.SyncManager.subscribeScreenRealtime(
+            screenKey = "marks_screen",
+            tableName = "student_marks",
+            schoolId = "default_school"
+        )
+        onDispose {
+            com.example.data.sync.SyncManager.unsubscribeScreenRealtime("marks_screen")
+        }
+    }
+
+    // On-demand fetch on screen entry
+    LaunchedEffect(Unit) {
+        com.example.data.sync.SyncManager.triggerTableSyncAsync("assessments", forceImmediate = true)
+        com.example.data.sync.SyncManager.triggerTableSyncAsync("student_marks", forceImmediate = true)
+    }
+
     LaunchedEffect(academicYear, selectedGrade, selectedClass, selectedStream, selectedSubject, selectedAssessment) {
         isLocked = false
     }
@@ -86,7 +104,7 @@ fun MarksEntryScreen(
         if (selectedAssessment == null && availableAssessments.isNotEmpty()) {
             val firstAsm = availableAssessments.first()
             marksViewModel.selectedAssessment.value = firstAsm
-            if (firstAsm.subjectName.isNotBlank()) {
+            if (firstAsm.subjectName.isNotBlank() && firstAsm.subjectName != "All Subjects" && firstAsm.subjectName != "All") {
                 marksViewModel.selectedSubject.value = firstAsm.subjectName
             }
         }
@@ -317,7 +335,7 @@ fun MarksEntryScreen(
                         val asm = availableAssessments.find { it.assessmentName == asmName }
                         if (asm != null) {
                             marksViewModel.selectedAssessment.value = asm
-                            if (asm.subjectName.isNotBlank()) {
+                            if (asm.subjectName.isNotBlank() && asm.subjectName != "All Subjects" && asm.subjectName != "All") {
                                 marksViewModel.selectedSubject.value = asm.subjectName
                             }
                         }

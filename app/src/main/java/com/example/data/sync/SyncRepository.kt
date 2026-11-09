@@ -2002,6 +2002,13 @@ class SyncRepository(
         if (allLocalMarks.isNotEmpty() && remoteMap.isEmpty()) {
             Log.i(TAG, "Self-healing triggered: Remote student_marks is empty (${remoteMap.size}) while local has ${allLocalMarks.size} records. Re-marking all local marks as dirty for cloud push.")
             dao.markAllMarksDirty()
+        } else if (allLocalMarks.isNotEmpty()) {
+            // Self-healing: if remote records exist in cloud but lack subject_name or have generic 'All Subjects', re-mark local dirty to push accurate subjects
+            val hasIncompleteRemoteSubjects = remoteMap.values.any { it.subjectName.isNullOrBlank() || it.subjectName == "All Subjects" }
+            if (hasIncompleteRemoteSubjects) {
+                Log.i(TAG, "Self-healing triggered: Cloud student_marks has missing or generic subjects. Re-marking local marks as dirty to populate complete metadata.")
+                dao.markAllMarksDirty()
+            }
         }
 
         while (true) {
@@ -2070,11 +2077,12 @@ class SyncRepository(
                 val localAssessment = assessmentDao?.getAssessmentByIdDirect(localAssessmentId)
 
                 if (existingLocal != null) {
-                    val resolvedSubject = if (existingLocal.subjectName.isNotBlank()) {
+                    val resolvedSubject = if (existingLocal.subjectName.isNotBlank() && existingLocal.subjectName != "All Subjects" && existingLocal.subjectName != "All") {
                         existingLocal.subjectName
                     } else {
-                        remoteDto.subjectName?.takeIf { it.isNotBlank() }
-                            ?: localAssessment?.subjectName ?: ""
+                        remoteDto.subjectName?.takeIf { it.isNotBlank() && it != "All Subjects" && it != "All" }
+                            ?: localAssessment?.subjectName?.takeIf { it != "All Subjects" && it != "All" }
+                            ?: existingLocal.subjectName
                     }
 
                     val remoteEntity = remoteDto.toEntity(
@@ -2114,8 +2122,9 @@ class SyncRepository(
                 } else {
                     if (!remoteDto.isDeleted) {
                         val student = studentDao.getStudentById(localStudentId)
-                        val resolvedSubject = remoteDto.subjectName?.takeIf { it.isNotBlank() }
-                            ?: localAssessment?.subjectName ?: ""
+                        val resolvedSubject = remoteDto.subjectName?.takeIf { it.isNotBlank() && it != "All Subjects" && it != "All" }
+                            ?: localAssessment?.subjectName?.takeIf { it != "All Subjects" && it != "All" }
+                            ?: ""
                         val resolvedMaxMarks = remoteDto.maxMarks ?: localAssessment?.maxMarks ?: 100
 
                         val newEntity = remoteDto.toEntity(
@@ -2927,12 +2936,6 @@ class SyncRepository(
         assessmentCache[remoteAssessmentId]?.let { return it }
 
         val dao = assessmentDao ?: return null
-        val directLocal = dao.getAssessmentByIdDirect(remoteAssessmentId)
-        if (directLocal != null) {
-            remoteToLocalAssessmentIdCache[remoteAssessmentId] = directLocal.id
-            assessmentCache[remoteAssessmentId] = directLocal.id
-            return directLocal.id
-        }
 
         val remoteAssessmentDto = try {
             client.from("assessments").select {
@@ -2944,18 +2947,25 @@ class SyncRepository(
             null
         }
 
-        if (remoteAssessmentDto == null) {
-            Log.w(TAG, "Cannot resolve remote assessment_id $remoteAssessmentId: not found in Supabase")
-            return null
-        }
-
-        if (remoteAssessmentDto.uuid.isNotBlank()) {
+        if (remoteAssessmentDto != null && remoteAssessmentDto.uuid.isNotBlank()) {
             val localByUuid = dao.getAssessmentByUuid(remoteAssessmentDto.uuid)
             if (localByUuid != null) {
                 remoteToLocalAssessmentIdCache[remoteAssessmentId] = localByUuid.id
                 assessmentCache[remoteAssessmentId] = localByUuid.id
                 return localByUuid.id
             }
+        }
+
+        val directLocal = dao.getAssessmentByIdDirect(remoteAssessmentId)
+        if (directLocal != null && (remoteAssessmentDto == null || directLocal.uuid == remoteAssessmentDto.uuid)) {
+            remoteToLocalAssessmentIdCache[remoteAssessmentId] = directLocal.id
+            assessmentCache[remoteAssessmentId] = directLocal.id
+            return directLocal.id
+        }
+
+        if (remoteAssessmentDto == null) {
+            Log.w(TAG, "Cannot resolve remote assessment_id $remoteAssessmentId: not found in Supabase")
+            return null
         }
 
         val allLocal = dao.getAllAssessmentsList()
@@ -3001,13 +3011,6 @@ class SyncRepository(
         remoteToLocalStudentIdCache[remoteStudentId]?.let { return it }
         studentCache[remoteStudentId]?.let { return it }
 
-        val directLocal = studentDao.getStudentById(remoteStudentId)
-        if (directLocal != null) {
-            remoteToLocalStudentIdCache[remoteStudentId] = directLocal.id
-            studentCache[remoteStudentId] = directLocal.id
-            return directLocal.id
-        }
-
         val remoteStudentDto = try {
             client.from("students").select {
                 filter { eq("id", remoteStudentId) }
@@ -3018,12 +3021,7 @@ class SyncRepository(
             null
         }
 
-        if (remoteStudentDto == null) {
-            Log.w(TAG, "Cannot resolve remote student_id $remoteStudentId: not found in Supabase")
-            return null
-        }
-
-        if (remoteStudentDto.uuid.isNotBlank()) {
+        if (remoteStudentDto != null && remoteStudentDto.uuid.isNotBlank()) {
             val localByUuid = studentDao.getStudentByUuid(remoteStudentDto.uuid)
             if (localByUuid != null) {
                 remoteToLocalStudentIdCache[remoteStudentId] = localByUuid.id
@@ -3032,7 +3030,7 @@ class SyncRepository(
             }
         }
 
-        if (remoteStudentDto.studentId.isNotBlank()) {
+        if (remoteStudentDto != null && remoteStudentDto.studentId.isNotBlank()) {
             val localByCode = studentDao.getStudentByCode(remoteStudentDto.studentId)
             if (localByCode != null) {
                 if (remoteStudentDto.uuid.isNotBlank() && localByCode.uuid != remoteStudentDto.uuid) {
@@ -3042,6 +3040,18 @@ class SyncRepository(
                 studentCache[remoteStudentId] = localByCode.id
                 return localByCode.id
             }
+        }
+
+        val directLocal = studentDao.getStudentById(remoteStudentId)
+        if (directLocal != null && (remoteStudentDto == null || directLocal.uuid == remoteStudentDto.uuid)) {
+            remoteToLocalStudentIdCache[remoteStudentId] = directLocal.id
+            studentCache[remoteStudentId] = directLocal.id
+            return directLocal.id
+        }
+
+        if (remoteStudentDto == null) {
+            Log.w(TAG, "Cannot resolve remote student_id $remoteStudentId: not found in Supabase")
+            return null
         }
 
         if (remoteStudentDto.isDeleted) {
