@@ -53,6 +53,11 @@ class MarksRepository(
         triggerBackgroundSync()
     }
 
+    suspend fun forceResyncAllMarks() {
+        marksDao.markAllMarksDirty()
+        triggerBackgroundSync()
+    }
+
     suspend fun saveMark(mark: StudentMarkEntity) {
         val dirtyMark = mark.copy(isDirty = true, updatedAt = System.currentTimeMillis())
         marksDao.insertOrUpdateMark(dirtyMark)

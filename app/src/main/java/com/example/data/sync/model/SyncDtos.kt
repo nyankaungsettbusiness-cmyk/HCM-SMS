@@ -768,6 +768,14 @@ data class StudentMarkSupabaseDto(
     @SerialName("is_passed") val isPassed: Boolean = false,
     @SerialName("is_distinction") val isDistinction: Boolean = false,
     val remarks: String = "",
+    @SerialName("subject_name") val subjectName: String? = null,
+    @SerialName("student_code") val studentCode: String? = null,
+    @SerialName("student_name") val studentName: String? = null,
+    @SerialName("roll_no") val rollNo: Int? = null,
+    @SerialName("max_marks") val maxMarks: Int? = null,
+    @SerialName("pass_mark") val passMark: Int? = null,
+    @SerialName("distinction_mark") val distinctionMark: Int? = null,
+    @SerialName("question_marks_json") val questionMarksJson: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("updated_by") val updatedBy: String = "Teacher",
     @SerialName("is_deleted") val isDeleted: Boolean = false
@@ -779,21 +787,30 @@ data class StudentMarkSupabaseDto(
         studentCode: String = "",
         studentName: String = "",
         rollNo: Int = 0,
-        subjectName: String = ""
+        subjectName: String = "",
+        maxMarks: Int = 100,
+        passMark: Int = 40,
+        distinctionMark: Int = 75,
+        questionMarksJson: String? = null
     ): StudentMarkEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
+        val finalMarks = if (isAbsent || isExempt) null else (if (marksObtained > 0.0) marksObtained else (value ?: score ?: marksObtained))
         return StudentMarkEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             assessmentId = resolvedAssessmentId,
             studentId = resolvedStudentId,
-            studentCode = studentCode,
-            studentName = studentName,
-            rollNo = rollNo,
-            subjectName = subjectName,
-            obtainedMarks = if (isAbsent || isExempt) null else marksObtained,
+            studentCode = this.studentCode?.takeIf { it.isNotBlank() } ?: studentCode,
+            studentName = this.studentName?.takeIf { it.isNotBlank() } ?: studentName,
+            rollNo = this.rollNo ?: rollNo,
+            subjectName = this.subjectName?.takeIf { it.isNotBlank() } ?: subjectName,
+            maxMarks = this.maxMarks ?: maxMarks,
+            obtainedMarks = finalMarks,
+            passMark = this.passMark ?: passMark,
+            distinctionMark = this.distinctionMark ?: distinctionMark,
             isPassed = isPassed,
             isDistinction = isDistinction,
             remarks = remarks,
+            questionMarksJson = this.questionMarksJson ?: questionMarksJson,
             updatedAt = if (parsedUpdatedAt > 0) parsedUpdatedAt else System.currentTimeMillis(),
             updatedBy = updatedBy,
             uuid = uuid.ifBlank { UUID.randomUUID().toString() },
@@ -810,17 +827,28 @@ data class StudentMarkSupabaseDto(
             remoteId: Long? = null
         ): StudentMarkSupabaseDto {
             val validUuid = entity.uuid.ifBlank { UUID.randomUUID().toString() }
+            val markVal = entity.obtainedMarks ?: 0.0
             return StudentMarkSupabaseDto(
                 id = remoteId ?: (if (entity.id > 0) entity.id else null),
                 uuid = validUuid,
                 assessmentId = targetAssessmentId,
                 studentId = targetStudentId,
-                marksObtained = entity.obtainedMarks ?: 0.0,
+                marksObtained = markVal,
+                value = markVal,
+                score = markVal,
                 isAbsent = entity.obtainedMarks == null,
                 isExempt = false,
                 isPassed = entity.isPassed,
                 isDistinction = entity.isDistinction,
                 remarks = entity.remarks,
+                subjectName = entity.subjectName,
+                studentCode = entity.studentCode,
+                studentName = entity.studentName,
+                rollNo = entity.rollNo,
+                maxMarks = entity.maxMarks,
+                passMark = entity.passMark,
+                distinctionMark = entity.distinctionMark,
+                questionMarksJson = entity.questionMarksJson,
                 updatedAt = millisToIso(entity.updatedAt),
                 updatedBy = entity.updatedBy,
                 isDeleted = entity.isDeleted
@@ -835,6 +863,8 @@ data class StudentMarkPushDto(
     @SerialName("assessment_id") val assessmentId: Long = 0L,
     @SerialName("student_id") val studentId: Long = 0L,
     @SerialName("marks_obtained") val marksObtained: Double = 0.0,
+    val value: Double = 0.0,
+    val score: Double = 0.0,
     @SerialName("is_absent") val isAbsent: Boolean = false,
     @SerialName("is_exempt") val isExempt: Boolean = false,
     @SerialName("is_passed") val isPassed: Boolean = false,
@@ -851,11 +881,14 @@ data class StudentMarkPushDto(
             targetAssessmentId: Long = entity.assessmentId
         ): StudentMarkPushDto {
             val validUuid = entity.uuid.ifBlank { UUID.randomUUID().toString() }
+            val markVal = entity.obtainedMarks ?: 0.0
             return StudentMarkPushDto(
                 uuid = validUuid,
                 assessmentId = targetAssessmentId,
                 studentId = targetStudentId,
-                marksObtained = entity.obtainedMarks ?: 0.0,
+                marksObtained = markVal,
+                value = markVal,
+                score = markVal,
                 isAbsent = entity.obtainedMarks == null,
                 isExempt = false,
                 isPassed = entity.isPassed,

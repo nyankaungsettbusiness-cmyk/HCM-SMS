@@ -454,6 +454,13 @@ class MarksViewModel(
         }
     }
 
+    fun triggerForceSync(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            marksRepository.forceResyncAllMarks()
+            onComplete()
+        }
+    }
+
     // Lock Assessment
     fun lockAssessment(userName: String, note: String, onComplete: () -> Unit) {
         val assessment = selectedAssessment.value ?: return

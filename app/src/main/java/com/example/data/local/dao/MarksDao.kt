@@ -39,6 +39,12 @@ interface MarksDao {
     @Query("UPDATE student_marks SET isDirty = 0, uuid = :uuid WHERE id = :id")
     suspend fun markStudentMarkSynced(id: Long, uuid: String)
 
+    @Query("UPDATE student_marks SET isDirty = 1 WHERE isDeleted = 0")
+    suspend fun markAllMarksDirty()
+
+    @Query("SELECT COUNT(*) FROM student_marks WHERE isDirty = 1")
+    suspend fun getDirtyMarksCount(): Int
+
     @Query("SELECT * FROM student_marks")
     fun getAllMarks(): Flow<List<StudentMarkEntity>>
 

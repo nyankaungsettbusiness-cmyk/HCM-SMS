@@ -1998,17 +1998,22 @@ class SyncRepository(
             emptyMap()
         }
 
+        val allLocalMarks = dao.getAllMarksSync()
+        if (allLocalMarks.isNotEmpty() && remoteMap.isEmpty()) {
+            Log.i(TAG, "Self-healing triggered: Remote student_marks is empty (${remoteMap.size}) while local has ${allLocalMarks.size} records. Re-marking all local marks as dirty for cloud push.")
+            dao.markAllMarksDirty()
+        }
+
         while (true) {
             val unsynced = dao.getStudentMarksForSync(limit = 300)
             if (unsynced.isEmpty()) break
-            var batchProcessed = 0
+            var batchPushed = 0
             for (item in unsynced) {
                 val assignedUuid = item.uuid.ifBlank { UUID.randomUUID().toString() }
                 val localStudent = studentDao.getStudentById(item.studentId)
                 if (localStudent == null) {
                     Log.w(TAG, "Skipping student_mark push: local studentId ${item.studentId} not found")
                     dao.markStudentMarkSynced(item.id, assignedUuid)
-                    batchProcessed++
                     continue
                 }
                 val targetStudentId = ensureRemoteStudentId(client, localStudent)
@@ -2025,15 +2030,14 @@ class SyncRepository(
                     client.from("student_marks").upsert(pushDto, onConflict = "uuid")
                     dao.markStudentMarkSynced(updated.id, assignedUuid)
                     pushed++
+                    batchPushed++
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to push student_mark: ${e.message}")
-                    dao.markStudentMarkSynced(item.id, assignedUuid)
+                    Log.e(TAG, "Failed to push student_mark (id=${item.id}, subject=${item.subjectName}): ${e.message}")
                 }
-                batchProcessed++
             }
-            if (batchProcessed == 0) break
+            if (batchPushed == 0) break
         }
 
         val localAssessmentCache = mutableMapOf<Long, Long>()
@@ -2063,7 +2067,16 @@ class SyncRepository(
                     continue
                 }
 
+                val localAssessment = assessmentDao?.getAssessmentByIdDirect(localAssessmentId)
+
                 if (existingLocal != null) {
+                    val resolvedSubject = if (existingLocal.subjectName.isNotBlank()) {
+                        existingLocal.subjectName
+                    } else {
+                        remoteDto.subjectName?.takeIf { it.isNotBlank() }
+                            ?: localAssessment?.subjectName ?: ""
+                    }
+
                     val remoteEntity = remoteDto.toEntity(
                         existingLocalId = existingLocal.id,
                         resolvedAssessmentId = localAssessmentId,
@@ -2071,7 +2084,11 @@ class SyncRepository(
                         studentCode = existingLocal.studentCode,
                         studentName = existingLocal.studentName,
                         rollNo = existingLocal.rollNo,
-                        subjectName = existingLocal.subjectName
+                        subjectName = resolvedSubject,
+                        maxMarks = if (existingLocal.maxMarks > 0) existingLocal.maxMarks else (localAssessment?.maxMarks ?: 100),
+                        passMark = existingLocal.passMark,
+                        distinctionMark = existingLocal.distinctionMark,
+                        questionMarksJson = existingLocal.questionMarksJson
                     )
                     
                     // DELETION TOMBSTONE PROTECTION:
@@ -2097,13 +2114,22 @@ class SyncRepository(
                 } else {
                     if (!remoteDto.isDeleted) {
                         val student = studentDao.getStudentById(localStudentId)
+                        val resolvedSubject = remoteDto.subjectName?.takeIf { it.isNotBlank() }
+                            ?: localAssessment?.subjectName ?: ""
+                        val resolvedMaxMarks = remoteDto.maxMarks ?: localAssessment?.maxMarks ?: 100
+
                         val newEntity = remoteDto.toEntity(
                             existingLocalId = 0,
                             resolvedAssessmentId = localAssessmentId,
                             resolvedStudentId = localStudentId,
                             studentCode = student?.studentCode ?: "",
                             studentName = student?.name ?: "",
-                            rollNo = student?.rollNumber ?: 0
+                            rollNo = student?.rollNumber ?: 0,
+                            subjectName = resolvedSubject,
+                            maxMarks = resolvedMaxMarks,
+                            passMark = remoteDto.passMark ?: 40,
+                            distinctionMark = remoteDto.distinctionMark ?: 75,
+                            questionMarksJson = remoteDto.questionMarksJson
                         )
                         try {
                             dao.insertOrUpdateMark(newEntity)
@@ -2145,7 +2171,6 @@ class SyncRepository(
                 if (localStudent == null) {
                     Log.w(TAG, "Skipping assessment_result push: local studentId ${item.studentId} not found")
                     dao.markAssessmentResultSynced(item.id, assignedUuid)
-                    batchProcessed++
                     continue
                 }
                 val targetStudentId = ensureRemoteStudentId(client, localStudent)
@@ -2158,13 +2183,12 @@ class SyncRepository(
                     client.from("assessment_results").upsert(pushDto, onConflict = "uuid")
                     dao.markAssessmentResultSynced(updated.id, assignedUuid)
                     pushed++
+                    batchProcessed++
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to push assessment_result: ${e.message}")
-                    dao.markAssessmentResultSynced(item.id, assignedUuid)
                 }
-                batchProcessed++
             }
             if (batchProcessed == 0) break
         }

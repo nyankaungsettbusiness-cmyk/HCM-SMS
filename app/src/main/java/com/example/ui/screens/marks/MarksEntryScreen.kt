@@ -121,6 +121,22 @@ fun MarksEntryScreen(
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Force Cloud Sync Button
+                    IconButton(
+                        onClick = {
+                            marksViewModel.triggerForceSync {
+                                snackbarMessage = "Cloud Sync initiated for all marks."
+                            }
+                        },
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Sync,
+                            contentDescription = "Sync Marks to Cloud",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
                     // Cancel / Edit Button
                     OutlinedButton(
                         onClick = {
