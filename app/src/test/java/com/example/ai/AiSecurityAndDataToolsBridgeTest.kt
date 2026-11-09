@@ -224,6 +224,8 @@ class AiSecurityAndDataToolsBridgeTest {
             override suspend fun getStudentMarkByUuid(uuid: String): StudentMarkEntity? = null
             override suspend fun markStudentMarkSynced(id: Long, uuid: String) {}
             override suspend fun getAllMarksSync(): List<StudentMarkEntity> = marks
+            override suspend fun markAllMarksDirty() {}
+            override suspend fun getDirtyMarksCount(): Int = 0
         }
 
         val fakeAttendanceDao = object : AttendanceDao {

@@ -482,32 +482,90 @@ object DynamicExaminationEngine {
 
         val resultTables = mutableListOf<DynamicExamCategoryTable>()
 
+        val coreSubjectsDef = listOf("Myanmar", "English", "Mathematics", "Science", "Social Studies")
+
         // 1. Monthly Tests Category Table
         if (summary.monthlyTests.isNotEmpty()) {
-            val rows = summary.monthlyTests.map { row ->
-                DynamicSubjectScore(
-                    subjectName = row.examName,
-                    category = "ACADEMIC",
-                    examScores = mapOf("Total" to row.totalObtainedCore),
-                    totalObtained = row.totalObtainedCore,
-                    maxPossible = row.maxPossibleCore,
-                    averagePercentage = if (row.maxPossibleCore > 0) (row.totalObtainedCore / row.maxPossibleCore) * 100.0 else 0.0,
-                    gradeLetter = computeGradeLetter(if (row.maxPossibleCore > 0) (row.totalObtainedCore / row.maxPossibleCore) * 100.0 else 0.0),
-                    isPass = row.totalObtainedCore >= (row.maxPossibleCore * 0.5),
-                    distinctionBadge = row.distinctionBadge
-                )
-            }
-            val avg = if (rows.isNotEmpty()) rows.map { it.averagePercentage }.average() else 0.0
-
-            val asmIds = allAssessments.filter { asm ->
+            val monthlyAsmIds = allAssessments.filter { asm ->
                 val cat = asm.assessmentType.uppercase()
                 val name = asm.assessmentName.uppercase()
                 (cat.contains("MONTHLY") || name.contains("MONTHLY")) && !cat.contains("CET") && !cat.contains("UNIT") && !cat.contains("CUSTOM")
             }.map { it.id }.toSet()
 
+            val term = selectedMonthOrPeriod.trim().lowercase()
+            val isSpecificMonth = term.isNotBlank() && term != "all months" && term != "all periods"
+            val targetAssessments = allAssessments.filter { asm ->
+                monthlyAsmIds.contains(asm.id) && if (isSpecificMonth) {
+                    asm.month.trim().lowercase() == term ||
+                            asm.assessmentName.lowercase().contains(term) ||
+                            asm.assessmentType.lowercase().contains(term) ||
+                            (term == "october" && (asm.month.lowercase().contains("oct") || asm.assessmentName.lowercase().contains("oct"))) ||
+                            (term == "november" && (asm.month.lowercase().contains("nov") || asm.assessmentName.lowercase().contains("nov"))) ||
+                            (term == "december" && (asm.month.lowercase().contains("dec") || asm.assessmentName.lowercase().contains("dec"))) ||
+                            (term == "january" && (asm.month.lowercase().contains("jan") || asm.assessmentName.lowercase().contains("jan"))) ||
+                            (term == "february" && (asm.month.lowercase().contains("feb") || asm.assessmentName.lowercase().contains("feb"))) ||
+                            (term == "march" && (asm.month.lowercase().contains("mar") || asm.assessmentName.lowercase().contains("mar"))) ||
+                            (term == "june" && (asm.month.lowercase().contains("jun") || asm.assessmentName.lowercase().contains("jun"))) ||
+                            (term == "july" && (asm.month.lowercase().contains("jul") || asm.assessmentName.lowercase().contains("jul"))) ||
+                            (term == "august" && (asm.month.lowercase().contains("aug") || asm.assessmentName.lowercase().contains("aug"))) ||
+                            (term == "september" && (asm.month.lowercase().contains("sep") || asm.assessmentName.lowercase().contains("sep")))
+                } else true
+            }
+            val activeMonthlyAsmIds = if (targetAssessments.isNotEmpty()) targetAssessments.map { it.id }.toSet() else monthlyAsmIds
+            val monthlyMarks = studentMarks.filter { it.studentId == studentId && it.obtainedMarks != null && !it.isDeleted && it.assessmentId in activeMonthlyAsmIds }
+
+            val rows = coreSubjectsDef.map { subName ->
+                val subMarks = monthlyMarks.filter { mark ->
+                    mark.subjectName.equals(subName, ignoreCase = true) ||
+                            (subName == "Mathematics" && mark.subjectName.equals("Math", ignoreCase = true)) ||
+                            (subName == "Social Studies" && mark.subjectName.equals("Social", ignoreCase = true))
+                }
+                val markObj = subMarks.maxByOrNull { it.updatedAt } ?: subMarks.firstOrNull()
+                val markVal = markObj?.obtainedMarks
+                val maxVal = markObj?.maxMarks?.toDouble() ?: 100.0
+                val hasMark = markVal != null
+
+                val scoreMap = mutableMapOf<String, Double?>()
+                if (targetAssessments.isNotEmpty()) {
+                    targetAssessments.forEach { asm ->
+                        val m = subMarks.find { it.assessmentId == asm.id }
+                        scoreMap[asm.assessmentName] = m?.obtainedMarks
+                    }
+                } else {
+                    scoreMap["Total"] = markVal
+                }
+
+                val avgPct = if (hasMark && maxVal > 0) (markVal / maxVal) * 100.0 else 0.0
+                val gradeLetter = if (hasMark) computeGradeLetter(avgPct) else "-"
+                val isPass = hasMark && markVal >= (maxVal * 0.40)
+                val distinctionBadge = when {
+                    !hasMark -> "-"
+                    avgPct >= 80.0 -> "Distinction (D)"
+                    avgPct >= 75.0 -> "Merit (M)"
+                    avgPct >= 40.0 -> "Pass (P)"
+                    else -> "Needs Improvement"
+                }
+
+                DynamicSubjectScore(
+                    subjectName = subName,
+                    category = "ACADEMIC",
+                    examScores = scoreMap,
+                    totalObtained = if (hasMark) markVal else 0.0,
+                    maxPossible = if (hasMark) maxVal else 0.0,
+                    averagePercentage = if (hasMark) (avgPct * 10.0).roundToInt() / 10.0 else 0.0,
+                    gradeLetter = gradeLetter,
+                    isPass = isPass,
+                    distinctionBadge = distinctionBadge
+                )
+            }
+
+            val totalObtained = rows.filter { it.maxPossible > 0 }.sumOf { it.totalObtained }
+            val totalMax = rows.filter { it.maxPossible > 0 }.sumOf { it.maxPossible }
+            val avg = if (totalMax > 0) (totalObtained / totalMax) * 100.0 else 0.0
+
             val (rankVal, totalCohort) = calculateStudentRank(
                 studentId = studentId,
-                assessmentIds = asmIds,
+                assessmentIds = activeMonthlyAsmIds,
                 cohortStudentIds = cohortIds,
                 studentMarks = studentMarks
             )
@@ -518,10 +576,10 @@ object DynamicExaminationEngine {
                     categoryTitle = "Monthly Examinations (Primary G1-G4)",
                     discoveredExams = summary.monthlyTests.map { it.examName },
                     subjectRows = rows,
-                    totalMarksAcrossExams = rows.sumOf { it.totalObtained },
-                    maxPossibleAcrossExams = rows.sumOf { it.maxPossible },
+                    totalMarksAcrossExams = (totalObtained * 10.0).roundToInt() / 10.0,
+                    maxPossibleAcrossExams = totalMax,
                     overallCategoryAverage = (avg * 10.0).roundToInt() / 10.0,
-                    overallCategoryGrade = computeGradeLetter(avg),
+                    overallCategoryGrade = if (totalMax > 0) computeGradeLetter(avg) else "-",
                     classRank = rankVal,
                     totalStudentsInClass = totalCohort
                 )
@@ -530,26 +588,57 @@ object DynamicExaminationEngine {
 
         // 2. Unit Tests Category Table (if completed)
         if (summary.unitTests.isNotEmpty()) {
-            val rows = summary.unitTests.map { row ->
-                DynamicSubjectScore(
-                    subjectName = row.examName,
-                    category = "ACADEMIC",
-                    examScores = mapOf("Total" to row.totalObtainedCore),
-                    totalObtained = row.totalObtainedCore,
-                    maxPossible = row.maxPossibleCore,
-                    averagePercentage = if (row.maxPossibleCore > 0) (row.totalObtainedCore / row.maxPossibleCore) * 100.0 else 0.0,
-                    gradeLetter = computeGradeLetter(if (row.maxPossibleCore > 0) (row.totalObtainedCore / row.maxPossibleCore) * 100.0 else 0.0),
-                    isPass = row.totalObtainedCore >= (row.maxPossibleCore * 0.5),
-                    distinctionBadge = row.distinctionBadge
-                )
-            }
-            val avg = if (rows.isNotEmpty()) rows.map { it.averagePercentage }.average() else 0.0
-
             val unitAsmIds = allAssessments.filter { asm ->
                 val cat = asm.assessmentType.uppercase()
                 val name = asm.assessmentName.uppercase()
                 cat.contains("UNIT") || name.contains("UNIT") || cat.contains("LESSON")
             }.map { it.id }.toSet()
+            val unitMarks = studentMarks.filter { it.studentId == studentId && it.obtainedMarks != null && !it.isDeleted && it.assessmentId in unitAsmIds }
+
+            val rows = coreSubjectsDef.map { subName ->
+                val subMarks = unitMarks.filter { mark ->
+                    mark.subjectName.equals(subName, ignoreCase = true) ||
+                            (subName == "Mathematics" && mark.subjectName.equals("Math", ignoreCase = true)) ||
+                            (subName == "Social Studies" && mark.subjectName.equals("Social", ignoreCase = true))
+                }
+                val markObj = subMarks.maxByOrNull { it.updatedAt } ?: subMarks.firstOrNull()
+                val markVal = markObj?.obtainedMarks
+                val maxVal = markObj?.maxMarks?.toDouble() ?: 100.0
+                val hasMark = markVal != null
+
+                val scoreMap = mutableMapOf<String, Double?>()
+                unitMarks.forEach { m ->
+                    val asm = allAssessments.find { it.id == m.assessmentId }
+                    scoreMap[asm?.assessmentName ?: "Score"] = m.obtainedMarks
+                }
+
+                val avgPct = if (hasMark && maxVal > 0) (markVal / maxVal) * 100.0 else 0.0
+                val gradeLetter = if (hasMark) computeGradeLetter(avgPct) else "-"
+                val isPass = hasMark && markVal >= (maxVal * 0.40)
+                val distinctionBadge = when {
+                    !hasMark -> "-"
+                    avgPct >= 80.0 -> "Distinction (D)"
+                    avgPct >= 75.0 -> "Merit (M)"
+                    avgPct >= 40.0 -> "Pass (P)"
+                    else -> "Needs Improvement"
+                }
+
+                DynamicSubjectScore(
+                    subjectName = subName,
+                    category = "ACADEMIC",
+                    examScores = scoreMap,
+                    totalObtained = if (hasMark) markVal else 0.0,
+                    maxPossible = if (hasMark) maxVal else 0.0,
+                    averagePercentage = if (hasMark) (avgPct * 10.0).roundToInt() / 10.0 else 0.0,
+                    gradeLetter = gradeLetter,
+                    isPass = isPass,
+                    distinctionBadge = distinctionBadge
+                )
+            }
+
+            val totalObtained = rows.filter { it.maxPossible > 0 }.sumOf { it.totalObtained }
+            val totalMax = rows.filter { it.maxPossible > 0 }.sumOf { it.maxPossible }
+            val avg = if (totalMax > 0) (totalObtained / totalMax) * 100.0 else 0.0
 
             val (rankVal, totalCohort) = calculateStudentRank(
                 studentId = studentId,
@@ -564,10 +653,10 @@ object DynamicExaminationEngine {
                     categoryTitle = "Unit Tests (Primary G1-G4)",
                     discoveredExams = summary.unitTests.map { it.examName },
                     subjectRows = rows,
-                    totalMarksAcrossExams = rows.sumOf { it.totalObtained },
-                    maxPossibleAcrossExams = rows.sumOf { it.maxPossible },
+                    totalMarksAcrossExams = (totalObtained * 10.0).roundToInt() / 10.0,
+                    maxPossibleAcrossExams = totalMax,
                     overallCategoryAverage = (avg * 10.0).roundToInt() / 10.0,
-                    overallCategoryGrade = computeGradeLetter(avg),
+                    overallCategoryGrade = if (totalMax > 0) computeGradeLetter(avg) else "-",
                     classRank = rankVal,
                     totalStudentsInClass = totalCohort
                 )
@@ -717,8 +806,19 @@ object DynamicExaminationEngine {
         val primaryAssessments = allAssessments.filter { asm ->
             if (asm.isDeleted) return@filter false
             val g = asm.grade.trim().uppercase()
-            val matchesGrade = g == normGrade || (normGrade in listOf("G1", "G2", "G3", "G4", "G5", "GRADE 1", "GRADE 2", "GRADE 3", "GRADE 4", "GRADE 5") && (g == "PRIMARY" || g == "KG-G5" || g.isBlank()))
-            val matchesYear = asm.academicYear.isBlank() || asm.academicYear.equals(academicYear, ignoreCase = true)
+            val matchesGrade = when {
+                g.isBlank() || g == "ALL" || g == "ALL GRADES" -> true
+                g == normGrade -> true
+                normGrade in listOf("G1", "GRADE 1") && (g in listOf("G1", "GRADE 1", "PRIMARY 1")) -> true
+                normGrade in listOf("G2", "GRADE 2") && (g in listOf("G2", "GRADE 2", "PRIMARY 2")) -> true
+                normGrade in listOf("G3", "GRADE 3") && (g in listOf("G3", "GRADE 3", "PRIMARY 3")) -> true
+                normGrade in listOf("G4", "GRADE 4") && (g in listOf("G4", "GRADE 4", "PRIMARY 4")) -> true
+                normGrade in listOf("G5", "GRADE 5") && (g in listOf("G5", "GRADE 5", "PRIMARY 5")) -> true
+                normGrade in listOf("G1", "G2", "G3", "G4", "G5", "GRADE 1", "GRADE 2", "GRADE 3", "GRADE 4", "GRADE 5") && (g == "PRIMARY" || g == "KG-G5" || g == "G1-G5") -> true
+                markedAssessmentIds.contains(asm.id) -> true
+                else -> false
+            }
+            val matchesYear = asm.academicYear.isBlank() || academicYear.isBlank() || asm.academicYear.equals(academicYear, ignoreCase = true)
             matchesGrade && matchesYear
         }
 
@@ -729,16 +829,43 @@ object DynamicExaminationEngine {
         val coreSubjectsDef = listOf("Myanmar", "English", "Mathematics", "Science", "Social Studies")
 
         // 1. Monthly Tests (one exam = one row)
-        val monthlyAssessments = completedAssessments.filter { asm ->
+        val allMonthlyAssessments = completedAssessments.filter { asm ->
             val cat = asm.assessmentType.uppercase()
             val name = asm.assessmentName.uppercase()
             (cat.contains("MONTHLY") || name.contains("MONTHLY")) &&
                     !cat.contains("CET") && !cat.contains("UNIT") && !cat.contains("CUSTOM")
         }
 
+        val term = selectedMonthOrPeriod.trim().lowercase()
+        val isSpecificMonth = term.isNotBlank() && term != "all months" && term != "all periods"
+        val monthlyAssessments = if (isSpecificMonth) {
+            val matched = allMonthlyAssessments.filter { asm ->
+                asm.month.trim().lowercase() == term ||
+                        asm.assessmentName.lowercase().contains(term) ||
+                        asm.assessmentType.lowercase().contains(term) ||
+                        (term == "october" && (asm.month.lowercase().contains("oct") || asm.assessmentName.lowercase().contains("oct"))) ||
+                        (term == "november" && (asm.month.lowercase().contains("nov") || asm.assessmentName.lowercase().contains("nov"))) ||
+                        (term == "december" && (asm.month.lowercase().contains("dec") || asm.assessmentName.lowercase().contains("dec"))) ||
+                        (term == "january" && (asm.month.lowercase().contains("jan") || asm.assessmentName.lowercase().contains("jan"))) ||
+                        (term == "february" && (asm.month.lowercase().contains("feb") || asm.assessmentName.lowercase().contains("feb"))) ||
+                        (term == "march" && (asm.month.lowercase().contains("mar") || asm.assessmentName.lowercase().contains("mar"))) ||
+                        (term == "june" && (asm.month.lowercase().contains("jun") || asm.assessmentName.lowercase().contains("jun"))) ||
+                        (term == "july" && (asm.month.lowercase().contains("jul") || asm.assessmentName.lowercase().contains("jul"))) ||
+                        (term == "august" && (asm.month.lowercase().contains("aug") || asm.assessmentName.lowercase().contains("aug"))) ||
+                        (term == "september" && (asm.month.lowercase().contains("sep") || asm.assessmentName.lowercase().contains("sep")))
+            }
+            if (matched.isNotEmpty()) matched else allMonthlyAssessments
+        } else {
+            allMonthlyAssessments
+        }
+
         val monthlyRows = if (monthlyAssessments.isNotEmpty()) {
-            monthlyAssessments.map { asm ->
-                val asmMarks = marksForStudent.filter { it.assessmentId == asm.id }
+            val groupedByExam = monthlyAssessments.groupBy {
+                it.assessmentName.trim().ifBlank { "Monthly Test" }
+            }
+            groupedByExam.map { (examName, asmsInExam) ->
+                val examAsmIds = asmsInExam.map { it.id }.toSet()
+                val asmMarks = marksForStudent.filter { it.assessmentId in examAsmIds }
                 var obtainedSum = 0.0
                 var maxSum = 0.0
                 var distCount = 0
@@ -763,14 +890,14 @@ object DynamicExaminationEngine {
 
                 val (rankVal, totalCohort) = calculateStudentRank(
                     studentId = studentId,
-                    assessmentIds = setOf(asm.id),
+                    assessmentIds = examAsmIds,
                     cohortStudentIds = cohortIds,
                     studentMarks = studentMarks
                 )
                 val rankStr = if (rankVal != null) "$rankVal/$totalCohort" else "-"
 
                 PrimaryExamRow(
-                    examName = asm.assessmentName,
+                    examName = examName,
                     examType = "MONTHLY",
                     totalObtainedCore = (obtainedSum * 10.0).roundToInt() / 10.0,
                     maxPossibleCore = if (maxSum > 0) maxSum else 0.0,

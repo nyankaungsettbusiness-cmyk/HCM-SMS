@@ -457,12 +457,30 @@ object PdfReportCardGenerator {
 
             val curY = drawSectionHeaderBar(canvas, "3. Student Growth Index (SGI)", startY)
 
-            val sgiAcadPct = data.kgSgiSummary?.academicComponentPct?.toInt() ?: 92
-            val sgiAttPct = data.kgSgiSummary?.attendanceComponentPct?.toInt() ?: data.attendanceSummary.monthAttendancePercentage.toInt()
-            val sgiHcmPct = data.kgSgiSummary?.hcmComponentPct?.toInt() ?: 94
-            val sgiOverallPct = data.kgSgiSummary?.overallSgiPercentage?.toInt() ?: 94
+            val hasAtt = data.attendanceSummary.monthTotalDays > 0
+            val attPct = if (hasAtt) data.attendanceSummary.monthAttendancePercentage.toInt() else null
 
-            val sgiTextLine = "SGI | Academic $sgiAcadPct% | Attendance $sgiAttPct% | HCM $sgiHcmPct% | Overall $sgiOverallPct%"
+            val acadTable = data.dynamicExamTables.find { it.categoryKey == "MONTHLY_TESTS" }
+                ?: data.dynamicExamTables.firstOrNull()
+            val hasAcad = acadTable != null && acadTable.maxPossibleAcrossExams > 0 && acadTable.totalMarksAcrossExams > 0
+            val acadPct = if (hasAcad) acadTable.overallCategoryAverage.toInt() else data.kgSgiSummary?.academicComponentPct?.toInt()?.takeIf { it > 0 }
+
+            val hasHcm = data.hcmSummary.pillars.any { p -> p.items.any { it.starRating > 0 } }
+            val hcmPct = if (hasHcm) ((data.hcmSummary.overallScore / 5.0) * 100.0).toInt() else null
+
+            val sgiOverallPct = if (hasAtt && hasAcad) {
+                data.kgSgiSummary?.overallSgiPercentage?.toInt()?.takeIf { it > 0 }
+                    ?: (((acadPct ?: 0) * 0.4) + ((attPct ?: 0) * 0.3) + ((hcmPct ?: 0) * 0.3)).toInt()
+            } else {
+                null
+            }
+
+            val sgiAcadStr = if (acadPct != null) "$acadPct%" else "-"
+            val sgiAttStr = if (attPct != null) "$attPct%" else "-"
+            val sgiHcmStr = if (hcmPct != null) "$hcmPct%" else "-"
+            val sgiOverallStr = if (sgiOverallPct != null) "$sgiOverallPct%" else "-"
+
+            val sgiTextLine = "SGI | Academic: $sgiAcadStr | Attendance: $sgiAttStr | HCM: $sgiHcmStr | Overall: $sgiOverallStr"
             canvas.drawText(sgiTextLine, MARGIN_LEFT + 6f, curY + 13f, sgiLinePaint)
         }
 
@@ -785,7 +803,7 @@ object PdfReportCardGenerator {
 
                         val scoreD = row?.totalObtained
                         val maxD = row?.maxPossible ?: 0.0
-                        val hasMark = row != null && maxD > 0.0 && (scoreD != null && scoreD > 0.0 || row.examScores.values.any { it != null })
+                        val hasMark = row != null && maxD > 0.0 && (scoreD != null || row.examScores.values.any { it != null })
 
                         val markVal = if (hasMark && scoreD != null) {
                             mObtained += scoreD

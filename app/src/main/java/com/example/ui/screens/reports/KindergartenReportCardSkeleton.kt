@@ -207,13 +207,31 @@ fun KindergartenReportCardSkeleton(
 
             // 4. SGI (Student Growth Index) - Ultra Compact, ONE SINGLE LINE
             PrintSectionTitle(title = "3. Student Growth Index (SGI)")
-            val sgiAcadPct = data.kgSgiSummary?.academicComponentPct?.toInt() ?: 92
-            val sgiAttPct = data.kgSgiSummary?.attendanceComponentPct?.toInt() ?: data.attendanceSummary.monthAttendancePercentage.toInt()
-            val sgiHcmPct = data.kgSgiSummary?.hcmComponentPct?.toInt() ?: 94
-            val sgiOverallPct = data.kgSgiSummary?.overallSgiPercentage?.toInt() ?: 94
+            val hasAtt = data.attendanceSummary.monthTotalDays > 0
+            val attPct = if (hasAtt) data.attendanceSummary.monthAttendancePercentage.toInt() else null
+
+            val acadTable = data.dynamicExamTables.find { it.categoryKey == "MONTHLY_TESTS" }
+                ?: data.dynamicExamTables.firstOrNull()
+            val hasAcad = acadTable != null && acadTable.maxPossibleAcrossExams > 0 && acadTable.totalMarksAcrossExams > 0
+            val acadPct = if (hasAcad) acadTable.overallCategoryAverage.toInt() else data.kgSgiSummary?.academicComponentPct?.toInt()?.takeIf { it > 0 }
+
+            val hasHcm = data.hcmSummary.pillars.any { p -> p.items.any { it.starRating > 0 } }
+            val hcmPct = if (hasHcm) ((data.hcmSummary.overallScore / 5.0) * 100.0).toInt() else null
+
+            val sgiOverallPct = if (hasAtt && hasAcad) {
+                data.kgSgiSummary?.overallSgiPercentage?.toInt()?.takeIf { it > 0 }
+                    ?: (((acadPct ?: 0) * 0.4) + ((attPct ?: 0) * 0.3) + ((hcmPct ?: 0) * 0.3)).toInt()
+            } else {
+                null
+            }
+
+            val sgiAcadStr = if (acadPct != null) "$acadPct%" else "-"
+            val sgiAttStr = if (attPct != null) "$attPct%" else "-"
+            val sgiHcmStr = if (hcmPct != null) "$hcmPct%" else "-"
+            val sgiOverallStr = if (sgiOverallPct != null) "$sgiOverallPct%" else "-"
 
             Text(
-                text = "SGI | Academic $sgiAcadPct% | Attendance $sgiAttPct% | HCM $sgiHcmPct% | Overall $sgiOverallPct%",
+                text = "SGI | Academic: $sgiAcadStr | Attendance: $sgiAttStr | HCM: $sgiHcmStr | Overall: $sgiOverallStr",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = PrimaryPrintHeaderColor,

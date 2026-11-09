@@ -97,14 +97,25 @@ object ReportGeneratorEngine {
         val isKg = student.gradeName.trim().equals("KG", ignoreCase = true) ||
                 ruleResult.selectedTemplate == com.example.data.local.entity.ReportTemplateType.KINDERGARTEN
 
-        val kgSgiSummary = if (isKg) {
-            val academicCompPct = dynamicExamTables.firstOrNull()?.overallCategoryAverage ?: ((hcmSummary.overallScore / 5.0) * 100.0)
-            val attendanceCompPct = attendanceSummary.monthAttendancePercentage
-            val hcmCompPct = (hcmSummary.overallScore / 5.0) * 100.0
-            val rawSgiVal = (academicCompPct * 0.4) + (attendanceCompPct * 0.3) + (hcmCompPct * 0.3)
+        val hasAttendance = attendanceSummary.monthTotalDays > 0
+        val hasAcademicMarks = dynamicExamTables.any { it.maxPossibleAcrossExams > 0 && it.totalMarksAcrossExams > 0 }
+        val hasHcmRatings = holisticForStudent.isNotEmpty()
+
+        val kgSgiSummary = if (isKg && (hasAttendance || hasAcademicMarks || hasHcmRatings)) {
+            val academicCompPct = if (hasAcademicMarks) {
+                dynamicExamTables.firstOrNull()?.overallCategoryAverage ?: 0.0
+            } else 0.0
+            val attendanceCompPct = if (hasAttendance) attendanceSummary.monthAttendancePercentage else 0.0
+            val hcmCompPct = if (hasHcmRatings) (hcmSummary.overallScore / 5.0) * 100.0 else 0.0
+
+            val isComplete = hasAttendance && (hasAcademicMarks || hasHcmRatings)
+            val rawSgiVal = if (isComplete) {
+                (academicCompPct * 0.4) + (attendanceCompPct * 0.3) + (hcmCompPct * 0.3)
+            } else 0.0
             val overallSgiPct = (rawSgiVal * 10.0).roundToInt() / 10.0
 
             val sgiGrade = when {
+                !isComplete -> "-"
                 overallSgiPct >= 90.0 -> "S+ (Exceptional Growth)"
                 overallSgiPct >= 80.0 -> "S (Advanced Growth)"
                 overallSgiPct >= 70.0 -> "A (Proficient Growth)"
@@ -113,9 +124,9 @@ object ReportGeneratorEngine {
             }
 
             com.example.data.report.ReportSgiSummary(
-                academicComponentPct = (academicCompPct * 10.0).roundToInt() / 10.0,
-                attendanceComponentPct = (attendanceCompPct * 10.0).roundToInt() / 10.0,
-                hcmComponentPct = (hcmCompPct * 10.0).roundToInt() / 10.0,
+                academicComponentPct = if (hasAcademicMarks) (academicCompPct * 10.0).roundToInt() / 10.0 else 0.0,
+                attendanceComponentPct = if (hasAttendance) (attendanceCompPct * 10.0).roundToInt() / 10.0 else 0.0,
+                hcmComponentPct = if (hasHcmRatings) (hcmCompPct * 10.0).roundToInt() / 10.0 else 0.0,
                 overallSgiPercentage = overallSgiPct,
                 sgiGrade = sgiGrade,
                 isAutoCalculated = true
@@ -252,7 +263,7 @@ object ReportGeneratorEngine {
             if (categoriesInPillar.isNotEmpty()) {
                 categoriesInPillar.forEach { cat ->
                     val result = studentResults.find { it.categoryId == cat.id }
-                    val stars = result?.ratingStars ?: 4 // Default 4-star default if not rated
+                    val stars = result?.ratingStars ?: 0 // Default 0-star (unrated) if not entered
                     items.add(
                         ReportHcmPillarItem(
                             categoryName = cat.categoryName,
@@ -292,12 +303,11 @@ object ReportGeneratorEngine {
                     }
                 }
                 defaults.forEach { d ->
-                    items.add(ReportHcmPillarItem(categoryName = d, pillar = pillarEnum, starRating = 4))
-                    pillarSum += 4
+                    items.add(ReportHcmPillarItem(categoryName = d, pillar = pillarEnum, starRating = 0))
                 }
             }
 
-            val pillarAvg = if (items.isNotEmpty()) pillarSum.toDouble() / items.size else 4.0
+            val pillarAvg = if (items.isNotEmpty()) pillarSum.toDouble() / items.size else 0.0
             pillarSummaries.add(
                 ReportHcmPillarSummary(
                     pillarName = pillarKey,
@@ -314,22 +324,25 @@ object ReportGeneratorEngine {
             }
         }
 
-        val honestyAvg = if (countHonesty > 0) sumHonesty / countHonesty else 4.0
-        val curiosityAvg = if (countCuriosity > 0) sumCuriosity / countCuriosity else 4.0
-        val mindfulnessAvg = if (countMindfulness > 0) sumMindfulness / countMindfulness else 4.0
+        val honestyAvg = if (countHonesty > 0) sumHonesty / countHonesty else 0.0
+        val curiosityAvg = if (countCuriosity > 0) sumCuriosity / countCuriosity else 0.0
+        val mindfulnessAvg = if (countMindfulness > 0) sumMindfulness / countMindfulness else 0.0
         val overallScore = ((honestyAvg + curiosityAvg + mindfulnessAvg) / 3.0 * 10.0).roundToInt() / 10.0
 
         val overallLevel = when {
             overallScore >= 4.5 -> "Outstanding (ထူးချွန်)"
             overallScore >= 3.5 -> "Proficient (ကောင်းမွန်)"
-            else -> "Developing (တိုးတက်ရန်လို)"
+            overallScore > 0 -> "Developing (တိုးတက်ရန်လို)"
+            else -> "Pending (အကဲဖြတ်ဆဲ)"
         }
 
         val studentSgi = sgiResults.filter { it.studentId == studentId }
         val sgiPct = if (studentSgi.isNotEmpty()) {
             studentSgi.map { it.ratingStars * 20.0 }.average()
-        } else {
+        } else if (overallScore > 0.0) {
             (overallScore / 5.0) * 100.0
+        } else {
+            0.0
         }
 
         return ReportHcmSummary(
@@ -348,7 +361,7 @@ object ReportGeneratorEngine {
         studentName: String,
         overallAverage: Double
     ): ReportTeacherComments {
-        if (teacherComment != null && (teacherComment.positiveComments.isNotBlank() || teacherComment.generalComment.isNotBlank())) {
+        if (teacherComment != null && (teacherComment.positiveComments.isNotBlank() || teacherComment.generalComment.isNotBlank() || teacherComment.areasForImprovement.isNotBlank() || teacherComment.futureRecommendation.isNotBlank())) {
             return ReportTeacherComments(
                 positiveComments = teacherComment.positiveComments,
                 areasForImprovement = teacherComment.areasForImprovement,
@@ -359,27 +372,13 @@ object ReportGeneratorEngine {
             )
         }
 
-        val positive = if (overallAverage >= 80.0) {
-            "$studentName သည် သင်ယူမှုစွမ်းရည်နှင့် စာမေးပွဲ ရလဒ်များတွင် ထူးချွန်စွာ အားထုတ်ကြိုးပမ်းသော ကျောင်းသားဖြစ်ပါသည်။"
-        } else {
-            "$studentName သည် အတန်းတွင်း သင်ယူမှုတွင် စိတ်ပါဝင်စားမှုရှိပြီး အပြုသဘောဆောင်သော သင်ယူသူဖြစ်ပါသည်။"
-        }
-
-        val improvement = if (overallAverage < 75.0) {
-            "အင်္ဂလိပ်စာ နှင့် သင်္ချာဘာသာရပ် လေ့ကျင့်ခန်းများကို ပိုမို အလေးထား လေ့ကျင့်ရန် လိုအပ်ပါသည်။"
-        } else {
-            "ပိုမိုမြင့်မားသော ရလဒ်များ ရရှိရန် စနစ်တကျ ပြန်လည်လေ့ကျင့်ခန်းများ ပြုလုပ်ရန် လိုအပ်ပါသည်။"
-        }
-
-        val general = "လစဉ် သင်ယူမှု တိုးတက်မှု နှင့် ကိုယ်ကျင့်တရား HCM assessment များတွင် စံပြကျောင်းသားဖြစ်အောင် ဆက်လက် ကြိုးစားပါ။"
-        val recommendation = "မိဘများအနေဖြင့် အိမ်တွင် နေ့စဉ် စာကြည့်ချိန် ၁ နာရီခွဲ သတ်မှတ်ပေးပြီး လစဉ် assessment ရလဒ်များကို စောင့်ကြည့်ပေးစေလိုပါသည်။"
-
+        // Leave empty when comments have not been entered by teacher yet
         return ReportTeacherComments(
-            positiveComments = positive,
-            areasForImprovement = improvement,
-            generalComment = general,
-            futureRecommendation = recommendation,
-            updatedBy = "Rule Engine Auto-Summary",
+            positiveComments = "",
+            areasForImprovement = "",
+            generalComment = "",
+            futureRecommendation = "",
+            updatedBy = "",
             updatedAt = teacherComment?.updatedAt ?: 0L
         )
     }
