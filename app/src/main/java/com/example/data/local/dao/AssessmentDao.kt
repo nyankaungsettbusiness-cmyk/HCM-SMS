@@ -25,10 +25,10 @@ interface AssessmentDao {
     @Query("SELECT * FROM assessments WHERE isDeleted = 1 ORDER BY id DESC")
     suspend fun getSoftDeletedAssessments(): List<AssessmentEntity>
 
-    @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear) ORDER BY id DESC")
+    @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear OR academicYear = '' OR academicYear IS NULL OR (:academicYear = '2026-2027' AND academicYear = '2025-2026')) ORDER BY id DESC")
     fun getAssessmentsByAcademicYear(academicYear: String): Flow<List<AssessmentEntity>>
 
-    @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear) ORDER BY id DESC")
+    @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear OR academicYear = '' OR academicYear IS NULL OR (:academicYear = '2026-2027' AND academicYear = '2025-2026')) ORDER BY id DESC")
     suspend fun getAssessmentsByAcademicYearList(academicYear: String): List<AssessmentEntity>
 
     @Query("SELECT * FROM assessments WHERE id = :id LIMIT 1")
@@ -40,13 +40,13 @@ interface AssessmentDao {
     @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND grade = :grade ORDER BY id DESC")
     fun getAssessmentsByGrade(grade: String): Flow<List<AssessmentEntity>>
 
-    @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND grade = :grade AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear) ORDER BY id DESC")
+    @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND grade = :grade AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear OR academicYear = '' OR academicYear IS NULL OR (:academicYear = '2026-2027' AND academicYear = '2025-2026')) ORDER BY id DESC")
     fun getAssessmentsByGradeAndYear(grade: String, academicYear: String): Flow<List<AssessmentEntity>>
 
     @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND status = :status ORDER BY id DESC")
     fun getAssessmentsByStatus(status: AssessmentStatus): Flow<List<AssessmentEntity>>
 
-    @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND status = :status AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear) ORDER BY id DESC")
+    @Query("SELECT * FROM assessments WHERE isDeleted = 0 AND status = :status AND (:academicYear = '' OR :academicYear = 'ALL' OR academicYear = :academicYear OR academicYear = '' OR academicYear IS NULL OR (:academicYear = '2026-2027' AND academicYear = '2025-2026')) ORDER BY id DESC")
     fun getAssessmentsByStatusAndYear(status: AssessmentStatus, academicYear: String): Flow<List<AssessmentEntity>>
 
     @Query("SELECT * FROM assessments WHERE isDirty = 1")

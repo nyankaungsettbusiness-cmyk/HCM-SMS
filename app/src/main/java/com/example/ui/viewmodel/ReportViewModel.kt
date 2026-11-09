@@ -55,21 +55,21 @@ class ReportViewModel(private val repository: ReportRepository) : ViewModel() {
     ) { all, histories, currentYear ->
         val historiesByStudent = histories.groupBy { it.studentId }
 
-        all.mapNotNull { student ->
+        all.map { student ->
             val studentHistories = historiesByStudent[student.id] ?: emptyList()
             val yearHistory = studentHistories.firstOrNull { it.academicYear.equals(currentYear, ignoreCase = true) }
+                ?: studentHistories.firstOrNull { it.academicYear.equals("2025-2026", ignoreCase = true) }
+                ?: studentHistories.maxByOrNull { it.academicYear }
 
             if (yearHistory != null) {
                 student.copy(
-                    gradeName = yearHistory.gradeName,
-                    className = yearHistory.className,
-                    rollNumber = yearHistory.rollNumber,
-                    status = yearHistory.status
+                    gradeName = yearHistory.gradeName.ifBlank { student.gradeName },
+                    className = yearHistory.className.ifBlank { student.className },
+                    rollNumber = if (yearHistory.rollNumber > 0) yearHistory.rollNumber else student.rollNumber,
+                    status = yearHistory.status.ifBlank { student.status }
                 )
-            } else if (studentHistories.isEmpty()) {
-                student
             } else {
-                null
+                student
             }
         }
     }.stateIn(

@@ -250,7 +250,8 @@ private fun ReportCardsScreenContent(
         val list = if (selectedGradeFilter == "All") {
             students
         } else {
-            students.filter { it.gradeName.equals(selectedGradeFilter, ignoreCase = true) }
+            val targetKey = com.example.ui.viewmodel.ExamRankingViewModel.normalizeGradeKey(selectedGradeFilter)
+            students.filter { com.example.ui.viewmodel.ExamRankingViewModel.normalizeGradeKey(it.gradeName) == targetKey }
         }
         list.distinctBy { if (it.studentCode.isNotBlank()) it.studentCode else "${it.name}_${it.gradeName}_${it.className}_${it.id}" }
     }

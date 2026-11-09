@@ -63,7 +63,7 @@ class ExamRankingViewModel(
         }
     }
 
-    val selectedGrade = MutableStateFlow("G12")
+    val selectedGrade = MutableStateFlow("G1")
     val selectedAssessmentId = MutableStateFlow<Long?>(null)
     val selectedSubject = MutableStateFlow("ALL")
 
@@ -72,7 +72,7 @@ class ExamRankingViewModel(
             val yearCodes = list.map { it.yearCode }
             val defaultYears = listOf("2026-2027", "2027-2028", "2028-2029")
             (yearCodes + defaultYears)
-                .filterNot { it == "2024-2025" || it == "2025-2026" }
+                .filterNot { it == "2024-2025" }
                 .distinct()
                 .sortedDescending()
         }
@@ -89,12 +89,11 @@ class ExamRankingViewModel(
         selectedGrade
     ) { allAsm, year, grade ->
         allAsm.filter { asm ->
-            val matchYear = asm.academicYear.equals(year, ignoreCase = true) || year.isBlank()
-            val asmGradeNorm = asm.grade.trim().uppercase()
-            val targetGradeNorm = grade.trim().uppercase()
-            val matchGrade = asmGradeNorm == targetGradeNorm ||
-                    asmGradeNorm.contains(targetGradeNorm) ||
-                    targetGradeNorm.contains(asmGradeNorm)
+            val matchYear = asm.academicYear.isBlank() ||
+                    year.isBlank() ||
+                    asm.academicYear.equals(year, ignoreCase = true) ||
+                    (year == "2026-2027" && asm.academicYear == "2025-2026")
+            val matchGrade = isGradeMatch(asm.grade, grade)
             matchYear && matchGrade
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -123,7 +122,9 @@ class ExamRankingViewModel(
         val currentAsm = if (asmId != null) {
             assessments.find { it.id == asmId } ?: assessments.firstOrNull()
         } else {
-            assessments.firstOrNull()
+            // Pick first assessment that has marks for this grade, or fallback to first
+            assessments.firstOrNull { asm -> allMarks.any { it.assessmentId == asm.id && it.obtainedMarks != null } }
+                ?: assessments.firstOrNull()
         }
 
         if (currentAsm == null) {
@@ -137,29 +138,28 @@ class ExamRankingViewModel(
         }
 
         val historiesByStudent = histories.groupBy { it.studentId }
-        val normTargetGrade = grade.trim().uppercase()
+        val targetGradeKey = normalizeGradeKey(grade)
 
-        val yearStudents = students.mapNotNull { student ->
+        val yearStudents = students.map { student ->
             val studentHistories = historiesByStudent[student.id] ?: emptyList()
             val yearHistory = studentHistories.firstOrNull { it.academicYear.equals(year, ignoreCase = true) }
+                ?: studentHistories.firstOrNull { it.academicYear.equals("2025-2026", ignoreCase = true) }
+                ?: studentHistories.maxByOrNull { it.academicYear }
 
             if (yearHistory != null) {
                 student.copy(
-                    gradeName = yearHistory.gradeName,
-                    className = yearHistory.className,
-                    rollNumber = yearHistory.rollNumber,
-                    status = yearHistory.status
+                    gradeName = yearHistory.gradeName.ifBlank { student.gradeName },
+                    className = yearHistory.className.ifBlank { student.className },
+                    rollNumber = if (yearHistory.rollNumber > 0) yearHistory.rollNumber else student.rollNumber,
+                    status = yearHistory.status.ifBlank { student.status }
                 )
-            } else if (studentHistories.isEmpty()) {
-                student
             } else {
-                null
+                student
             }
         }
 
         val gradeStudents = yearStudents.filter { std ->
-            val gNorm = std.gradeName.trim().uppercase()
-            gNorm == normTargetGrade || gNorm.contains(normTargetGrade) || normTargetGrade.contains(gNorm)
+            normalizeGradeKey(std.gradeName) == targetGradeKey
         }.distinctBy { it.id }.sortedBy { it.rollNumber }
 
         val asmMarks = allMarks.filter { it.assessmentId == currentAsm.id }
@@ -168,7 +168,7 @@ class ExamRankingViewModel(
         val subjectsForAsm = asmMarks.map { it.subjectName }.distinct()
         val sortedSubjects = sortSubjectsLogically(subjectsForAsm)
 
-        val isHighSchool = normTargetGrade in listOf("G10", "G11", "G12", "GRADE 10", "GRADE 11", "GRADE 12")
+        val isHighSchool = targetGradeKey in listOf("G10", "G11", "G12")
 
         val displaySubjects = if (filterSub != "ALL" && filterSub.isNotBlank()) {
             sortedSubjects.filter { it.equals(filterSub, ignoreCase = true) }
@@ -246,7 +246,7 @@ class ExamRankingViewModel(
                 distinctionCount = distinctionCount,
                 distinctionText = "${distinctionCount}D",
                 isPassed = isPassed,
-                resultStatus = if (isPassed) "Pass" else "Fail"
+                resultStatus = if (!hasAnyMark) "Pending" else if (isPassed) "Pass" else "Fail"
             )
         }
 
@@ -330,6 +330,46 @@ class ExamRankingViewModel(
             "English (International)" to 14
         )
         return subjects.sortedWith(compareBy({ priorityMap[it] ?: 99 }, { it }))
+    }
+
+    companion object {
+        fun normalizeGradeKey(grade: String): String {
+            val clean = grade.trim().uppercase()
+                .replace("GRADE", "")
+                .replace("CLASS", "")
+                .replace("YEAR", "")
+                .replace("PRIMARY", "P")
+                .replace(" ", "")
+                .replace("-", "")
+                .replace("_", "")
+            return when {
+                clean == "KG" || clean == "KINDERGARTEN" || clean == "PRESCHOOL" -> "KG"
+                clean.startsWith("G") -> {
+                    val n = clean.removePrefix("G").toIntOrNull()
+                    if (n != null) "G$n" else clean
+                }
+                clean.startsWith("P") -> {
+                    val n = clean.removePrefix("P").toIntOrNull()
+                    if (n != null) "G$n" else clean
+                }
+                else -> {
+                    val n = clean.toIntOrNull()
+                    if (n != null) "G$n" else clean
+                }
+            }
+        }
+
+        fun isGradeMatch(assessmentGrade: String, targetGrade: String): Boolean {
+            val asmNorm = normalizeGradeKey(assessmentGrade)
+            val targetNorm = normalizeGradeKey(targetGrade)
+            if (asmNorm == targetNorm) return true
+            val rawAsm = assessmentGrade.trim().uppercase()
+            if (rawAsm == "ALL" || rawAsm == "ALL GRADES" || rawAsm == "PRIMARY") {
+                val isPrimary = targetNorm in listOf("KG", "G1", "G2", "G3", "G4", "G5")
+                if (isPrimary) return true
+            }
+            return false
+        }
     }
 }
 

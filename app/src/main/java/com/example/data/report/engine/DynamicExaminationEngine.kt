@@ -123,19 +123,22 @@ object DynamicExaminationEngine {
         // 1. Filter assessments matching grade and academic year strictly
         val gradeAssessments = allAssessments.filter { asm ->
             if (asm.isDeleted) return@filter false
-            val asmGrade = asm.grade.trim().uppercase()
-            val normG = normalizedGrade.uppercase()
+            val asmGradeKey = com.example.ui.viewmodel.ExamRankingViewModel.normalizeGradeKey(asm.grade)
+            val targetGradeKey = com.example.ui.viewmodel.ExamRankingViewModel.normalizeGradeKey(gradeName)
 
             val matchesGrade = when {
-                asmGrade.isBlank() || asmGrade == "ALL GRADES" || asmGrade == "ALL" -> true
-                asmGrade == normG -> true
-                normG in listOf("G6", "G7", "G8", "G9") -> (asmGrade in listOf("G6", "G7", "G8", "G9") && (asmGrade == normG || asmGrade == "SECONDARY" || asmGrade == "G6-G9")) || (asmGrade == "SECONDARY" || asmGrade == "G6-G9")
-                normG in listOf("G10", "G11", "G12") -> (asmGrade in listOf("G10", "G11", "G12") && (asmGrade == normG || asmGrade == "HIGH SCHOOL" || asmGrade == "G10-G12")) || (asmGrade == "HIGH SCHOOL" || asmGrade == "G10-G12")
-                normG in listOf("G1", "G2", "G3", "G4", "G5") -> (asmGrade in listOf("G1", "G2", "G3", "G4", "G5") && (asmGrade == normG || asmGrade == "PRIMARY" || asmGrade == "G1-G5")) || (asmGrade == "PRIMARY" || asmGrade == "G1-G5")
+                asm.grade.isBlank() || asm.grade.equals("ALL GRADES", ignoreCase = true) || asm.grade.equals("ALL", ignoreCase = true) -> true
+                asmGradeKey == targetGradeKey -> true
+                targetGradeKey in listOf("G6", "G7", "G8", "G9") && (asmGradeKey in listOf("G6", "G7", "G8", "G9") || asm.grade.contains("SECONDARY", ignoreCase = true)) -> true
+                targetGradeKey in listOf("G10", "G11", "G12") && (asmGradeKey in listOf("G10", "G11", "G12") || asm.grade.contains("HIGH", ignoreCase = true)) -> true
+                targetGradeKey in listOf("G1", "G2", "G3", "G4", "G5") && (asmGradeKey in listOf("G1", "G2", "G3", "G4", "G5") || asm.grade.contains("PRIMARY", ignoreCase = true)) -> true
                 else -> false
             }
 
-            val matchesYear = asm.academicYear.isBlank() || asm.academicYear.equals(academicYear, ignoreCase = true)
+            val matchesYear = asm.academicYear.isBlank() ||
+                    academicYear.isBlank() ||
+                    asm.academicYear.equals(academicYear, ignoreCase = true) ||
+                    (academicYear == "2026-2027" && asm.academicYear == "2025-2026")
 
             matchesGrade && matchesYear
         }
@@ -322,7 +325,10 @@ object DynamicExaminationEngine {
                     !asm.assessmentType.uppercase().contains("WEEKLY") &&
                     !asm.assessmentType.uppercase().contains("LESSON") &&
                     !asm.assessmentType.uppercase().contains("CUSTOM")
-            val matchesYear = asm.academicYear.isBlank() || asm.academicYear.equals(academicYear, ignoreCase = true)
+            val matchesYear = asm.academicYear.isBlank() ||
+                    academicYear.isBlank() ||
+                    asm.academicYear.equals(academicYear, ignoreCase = true) ||
+                    (academicYear == "2026-2027" && asm.academicYear == "2025-2026")
             matchesGrade && matchesYear
         }
 

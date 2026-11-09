@@ -484,7 +484,7 @@ fun StudentManagementScreen(
         key1 = academicYear
     ) {
         if (assessmentRepository != null) {
-            assessmentRepository.getAssessmentsForAcademicYear(academicYear).collect {
+            assessmentRepository.allAssessments.collect {
                 value = it
             }
         } else {
@@ -1618,7 +1618,7 @@ fun AcademicDataTab(
 
     // Assessments relevant to student marks or academic year
     val relevantAssessments = remember(assessments, studentMarks) {
-        val markAssessmentIds = studentMarks.map { it.assessmentId }.toSet()
+        val markAssessmentIds = studentMarks.filter { it.obtainedMarks != null }.map { it.assessmentId }.toSet()
         if (markAssessmentIds.isNotEmpty()) {
             val matched = assessments.filter { it.id in markAssessmentIds }
             if (matched.isNotEmpty()) matched else assessments
@@ -1629,8 +1629,9 @@ fun AcademicDataTab(
 
     // Track selected assessment filter (if assessments exist)
     var selectedAssessmentId by remember(relevantAssessments, studentMarks) {
+        val markAssessmentIds = studentMarks.filter { it.obtainedMarks != null }.map { it.assessmentId }.toSet()
         mutableStateOf(
-            relevantAssessments.firstOrNull { it.id in studentMarks.map { m -> m.assessmentId } }?.id
+            relevantAssessments.firstOrNull { it.id in markAssessmentIds }?.id
                 ?: relevantAssessments.firstOrNull()?.id
         )
     }
@@ -1638,7 +1639,8 @@ fun AcademicDataTab(
     // Filter student marks by selected assessment
     val filteredMarks = remember(studentMarks, selectedAssessmentId) {
         if (selectedAssessmentId != null) {
-            studentMarks.filter { it.assessmentId == selectedAssessmentId }
+            val list = studentMarks.filter { it.assessmentId == selectedAssessmentId }
+            if (list.any { it.obtainedMarks != null }) list else studentMarks
         } else {
             studentMarks
         }
@@ -1939,6 +1941,8 @@ fun AcademicDataTab(
         // 5. Expandable Subject Cards (Option A Accordion Pattern)
         subjects.forEach { subjectName ->
             val mark = filteredMarks.firstOrNull { it.subjectName.equals(subjectName, ignoreCase = true) }
+                ?: filteredMarks.firstOrNull { it.subjectName.contains(subjectName, ignoreCase = true) || subjectName.contains(it.subjectName, ignoreCase = true) }
+                ?: studentMarks.firstOrNull { it.obtainedMarks != null && it.subjectName.equals(subjectName, ignoreCase = true) }
             val blueprint = blueprints.firstOrNull { it.subjectName.equals(subjectName, ignoreCase = true) }
             val isExpanded = expandedSubjects[subjectName] ?: false
 
@@ -2657,13 +2661,14 @@ fun QuickReviewTab(
     } else null
 
     // 2. Academic Auto Review Calculations (Based on latest assessment marks)
-    val markAssessmentIds = remember(studentMarks) { studentMarks.map { it.assessmentId }.toSet() }
+    val markAssessmentIds = remember(studentMarks) { studentMarks.filter { it.obtainedMarks != null }.map { it.assessmentId }.toSet() }
     val latestAssessment = remember(assessments, markAssessmentIds) {
         assessments.firstOrNull { it.id in markAssessmentIds } ?: assessments.firstOrNull()
     }
     val relevantMarks = remember(studentMarks, latestAssessment) {
         if (latestAssessment != null) {
-            studentMarks.filter { it.assessmentId == latestAssessment.id }
+            val list = studentMarks.filter { it.assessmentId == latestAssessment.id }
+            if (list.any { it.obtainedMarks != null }) list else studentMarks
         } else {
             studentMarks
         }
