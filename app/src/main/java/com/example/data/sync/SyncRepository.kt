@@ -39,7 +39,8 @@ class SyncRepository(
     private val holisticDao: HolisticDao? = null,
     private val assessmentPeriodDao: AssessmentPeriodDao? = null,
     private val attendanceDao: AttendanceDao? = null,
-    private val academicYearDao: AcademicYearDao? = null
+    private val academicYearDao: AcademicYearDao? = null,
+    private val dbInstance: AppDatabase? = null
 ) {
     constructor(db: AppDatabase) : this(
         studentDao = db.studentDao(),
@@ -51,7 +52,8 @@ class SyncRepository(
         holisticDao = db.holisticDao(),
         assessmentPeriodDao = db.assessmentPeriodDao(),
         attendanceDao = db.attendanceDao(),
-        academicYearDao = db.academicYearDao()
+        academicYearDao = db.academicYearDao(),
+        dbInstance = db
     )
 
     companion object {
@@ -72,21 +74,16 @@ class SyncRepository(
         private const val HOST_CHECK_CACHE_MS = 15_000L
 
         suspend fun isHostReachable(urlStr: String): Boolean = withContext(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
-            if (now - lastHostCheckTime < HOST_CHECK_CACHE_MS) {
-                return@withContext lastHostCheckResult
-            }
-            val reachable = try {
+            if (urlStr.isBlank() || !urlStr.startsWith("http")) return@withContext false
+            try {
                 val uri = URI(urlStr)
                 val host = uri.host ?: return@withContext false
-                val address = InetAddress.getByName(host)
-                address != null && !address.hostAddress.isNullOrBlank()
+                // Avoid blocking Java InetAddress.getByName DNS lookups on unstable mobile/VPN connections.
+                // Ktor client manages connection lifecycle and per-request timeouts with graceful fallbacks.
+                host.isNotBlank()
             } catch (e: Exception) {
                 false
             }
-            lastHostCheckTime = now
-            lastHostCheckResult = reachable
-            reachable
         }
     }
 
@@ -180,6 +177,125 @@ class SyncRepository(
             } catch (e: Exception) {
                 Log.e(TAG, "Error clearing all dirty flags: ${e.message}", e)
             }
+        }
+    }
+
+    /**
+     * Marks all database tables as dirty and resets failed outbox entries so they are ready for a full Master Push.
+     */
+    suspend fun markAllRecordsDirty(db: AppDatabase? = dbInstance) {
+        val targetDb = db ?: dbInstance ?: return
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val writableDb = targetDb.openHelper.writableDatabase
+                writableDb.execSQL("UPDATE school_settings SET isDirty = 1;")
+                writableDb.execSQL("UPDATE subjects SET isDirty = 1;")
+                writableDb.execSQL("UPDATE grades SET isDirty = 1;")
+                writableDb.execSQL("UPDATE school_classes SET isDirty = 1;")
+                writableDb.execSQL("UPDATE students SET isDirty = 1;")
+                writableDb.execSQL("UPDATE teachers SET isDirty = 1;")
+                writableDb.execSQL("UPDATE users SET isDirty = 1;")
+                writableDb.execSQL("UPDATE academic_years SET isDirty = 1;")
+                writableDb.execSQL("UPDATE assessments SET isDirty = 1;")
+                writableDb.execSQL("UPDATE student_marks SET isDirty = 1;")
+                writableDb.execSQL("UPDATE assessment_results SET isDirty = 1;")
+                writableDb.execSQL("UPDATE attendance_records SET isDirty = 1;")
+                writableDb.execSQL("UPDATE custom_exams SET isDirty = 1;")
+                writableDb.execSQL("UPDATE grading_policies SET isDirty = 1;")
+                try {
+                    writableDb.execSQL("UPDATE holistic_categories SET isDirty = 1;")
+                    writableDb.execSQL("UPDATE holistic_results SET isDirty = 1;")
+                    writableDb.execSQL("UPDATE teacher_comments SET isDirty = 1;")
+                    writableDb.execSQL("UPDATE sgi_categories SET isDirty = 1;")
+                    writableDb.execSQL("UPDATE sgi_results SET isDirty = 1;")
+                } catch (_: Exception) {}
+                try {
+                    targetDb.syncOutboxDao().resetFailedToPending()
+                } catch (_: Exception) {}
+                Log.i(TAG, "All local records successfully marked dirty for Master Cloud Push.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error marking all dirty: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Master Push to Cloud:
+     * Safely pushes all intact local records (classes, subjects, students, assessments, 4 months marks, holistic, attendance)
+     * up to Supabase in strict relational dependency order using upsert.
+     * Guaranteed never to pull deletes from empty remote tables or wipe local records.
+     */
+    suspend fun uploadAllLocalDataAsMaster(
+        onProgress: suspend (String) -> Unit = {}
+    ): SyncResult {
+        val client = SupabaseClientManager.getInstance()
+            ?: return SyncResult.Error("Supabase client is not configured with valid URL/Key")
+
+        return try {
+            onProgress("စက်တွင်း Data များကို အတည်ပြုပြီး Cloud အတွက် ပြင်ဆင်နေပါသည်...")
+            markAllRecordsDirty()
+
+            var totalPushed = 0
+
+            // 1. Foundation: Users, Academic Years, School Settings
+            onProgress("အသုံးပြုသူများနှင့် စာသင်နှစ်များ Cloud သို့ ပို့နေသည်...")
+            val (pUsers, _) = syncUsersInternal(client)
+            val (pYears, _) = syncAcademicYearsInternal(client)
+            val (pSettings, _) = syncSchoolSettingsInternal(client)
+            totalPushed += pUsers + pYears + pSettings
+
+            // 2. Academic Structure: Grades, Classes, Subjects
+            onProgress("အတန်းများနှင့် ဘာသာရပ်များ Cloud သို့ ပို့နေသည်...")
+            val (pGrades, _) = syncGradesInternal(client)
+            val (pClasses, _) = syncSchoolClassesInternal(client)
+            val (pSubjects, _) = syncSubjectsInternal(client)
+            val (pRefs, _) = syncGradeSubjectCrossRefsInternal(client)
+            totalPushed += pGrades + pClasses + pSubjects + pRefs
+
+            // 3. People: Teachers and Students
+            onProgress("ဆရာများနှင့် ကျောင်းသား စာရင်းများ Cloud သို့ ပို့နေသည်...")
+            val (pTeachers, _) = syncTeachersInternal(client)
+            val (pStudents, _) = syncStudentsInternal(client)
+            totalPushed += pTeachers + pStudents
+
+            // 4. Assessment Framework: Types, Exams, Policies, Periods, Assessments
+            onProgress("စာမေးပွဲများနှင့် မူဝါဒများ Cloud သို့ ပို့နေသည်...")
+            val (pTypes, _) = syncAssessmentTypesInternal(client)
+            val (pExams, _) = syncCustomExamsInternal(client)
+            val (pPolicies, _) = syncGradingPoliciesInternal(client)
+            val (pPeriods, _) = syncAssessmentPeriodsInternal(client)
+            val (pAssessments, _) = syncAssessmentsInternal(client)
+            totalPushed += pTypes + pExams + pPolicies + pPeriods + pAssessments
+
+            // 5. Academic Performance: Student Marks & Results
+            onProgress("ကျောင်းသားများ၏ ၄ လစာ အမှတ်များ Cloud သို့ ပို့နေသည်...")
+            val (pMarks, _) = syncStudentMarksInternal(client)
+            val (pResults, _) = syncAssessmentResultsInternal(client)
+            totalPushed += pMarks + pResults
+
+            // 6. Holistic & Well-being: Holistic, SGI, Comments, Attendance, Promotion
+            onProgress("Holistic စစ်ဆေးမှုနှင့် ခွင့်/ပျက် စာရင်းများ Cloud သို့ ပို့နေသည်...")
+            val (pHolCat, _) = syncHolisticCategoriesInternal(client)
+            val (pHolRes, _) = syncHolisticResultsInternal(client)
+            val (pSgiCat, _) = syncSgiCategoriesInternal(client)
+            val (pSgiRes, _) = syncSgiResultsInternal(client)
+            val (pComments, _) = syncTeacherCommentsInternal(client)
+            val (pAttendance, _) = syncAttendanceInternal(client)
+            val (pPromotion, _) = syncPromotionHistoryInternal(client)
+            totalPushed += pHolCat + pHolRes + pSgiCat + pSgiRes + pComments + pAttendance + pPromotion
+
+            onProgress("Data အားလုံး Cloud ပေါ်သို့ အောင်မြင်စွာ Master အဖြစ် တင်ပို့ပြီးပါပြီ!")
+            SyncResult.Success(
+                pushedStudents = pStudents,
+                pulledStudents = 0,
+                pushedTeachers = pTeachers,
+                pulledTeachers = 0,
+                totalPushed = totalPushed,
+                totalPulled = 0
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Master upload error: ${e.message}", e)
+            SyncResult.Error("Master Push အမှား: ${e.message ?: "Unknown error"}")
         }
     }
 

@@ -2029,45 +2029,10 @@ class SystemSettingsRepository(
             // Clean temporary cache files
             cleanTempFiles()
 
-            // Connect to Supabase Cloud Database to purge corresponding remote testing records
-            var remoteCleaned = false
-            try {
-                val client = SupabaseClientManager.getInstance()
-                if (client != null) {
-                    val remoteTransactionalTables = listOf(
-                        "student_marks", "assessment_results", "attendance_records",
-                        "holistic_results", "sgi_results", "teacher_comments", "promotion_history"
-                    )
-                    for (t in remoteTransactionalTables) {
-                        try {
-                            client.from(t).delete {
-                                filter { gt("id", -1) }
-                            }
-                        } catch (e: Exception) {
-                            Log.w("SystemSettingsRepo", "Cloud purge note for $t: ${e.message}")
-                        }
-                    }
-
-                    if (clearAssessments) {
-                        try {
-                            client.from("assessments").delete { filter { gt("id", -1) } }
-                        } catch (_: Exception) {}
-                    }
-                    if (clearStudents) {
-                        try {
-                            client.from("students").delete { filter { gt("id", -1) } }
-                        } catch (_: Exception) {}
-                    }
-                    if (clearTeachers) {
-                        try {
-                            client.from("teachers").delete { filter { gt("id", -1) } }
-                        } catch (_: Exception) {}
-                    }
-                    remoteCleaned = true
-                }
-            } catch (e: Exception) {
-                Log.w("SystemSettingsRepo", "Cloud sync during reset: ${e.message}")
-            }
+            // Architectural Safety Guard: Local Reset / Test Run Data Reset is strictly device-local.
+            // Under NO circumstance should client device test resets purge cloud Supabase records.
+            // Cloud data lifecycle is managed via administrative controls or migrations.
+            val remoteCleaned = false
 
             // Run database vacuum & optimize to reclaim disk space
             try {

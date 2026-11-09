@@ -1331,6 +1331,9 @@ fun BackupRestoreSection(
     var clearAssessmentsCheck by remember { mutableStateOf(false) }
     var factoryResetConfirmText by remember { mutableStateOf("") }
     var showSupabaseSchemaGuideDialog by remember { mutableStateOf(false) }
+    var isMasterPushing by remember { mutableStateOf(false) }
+    var masterPushProgressText by remember { mutableStateOf<String?>(null) }
+    var showMasterPushConfirmDialog by remember { mutableStateOf(false) }
     val pendingChangesCount by com.example.data.sync.SyncManager.pendingChangesCount.collectAsState()
 
     val backupFilePicker = rememberLauncherForActivityResult(
@@ -1685,25 +1688,56 @@ fun BackupRestoreSection(
                         }
                     }
 
+                    // Master Cloud Push Button
+                    Button(
+                        onClick = { showMasterPushConfirmDialog = true },
+                        enabled = !isManualSyncing && !isMasterPushing,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isMasterPushing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                masterPushProgressText ?: "Master Data တင်ပို့နေပါသည်...",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                maxLines = 1
+                            )
+                        } else {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Master Cloud Push (Data အားလုံး တင်မည်)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
                     if (pendingChangesCount > 0) {
                         OutlinedButton(
                             onClick = {
-                                com.example.data.sync.SyncManager.clearAllPendingChanges(context)
+                                com.example.data.sync.SyncManager.triggerSyncAsync(context, forceImmediate = true)
                                 Toast.makeText(
                                     context,
-                                    "Pending စာရင်း ($pendingChangesCount) ခုကို အောင်မြင်စွာ ရှင်းလင်းပြီးပါပြီ",
+                                    "Pending စာရင်း ($pendingChangesCount) ခုကို Cloud သို့ ပို့ဆောင်နေပါသည်...",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
                             colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFFE65100)
+                                contentColor = MaterialTheme.colorScheme.primary
                             ),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                "Clear Pending ($pendingChangesCount)",
+                                "Retry Pending ($pendingChangesCount)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -2061,6 +2095,78 @@ fun BackupRestoreSection(
             confirmButton = {
                 Button(onClick = { showSupabaseSchemaGuideDialog = false }) {
                     Text("Understood")
+                }
+            }
+        )
+    }
+
+    if (showMasterPushConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showMasterPushConfirmDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.CloudUpload,
+                    contentDescription = null,
+                    tint = Color(0xFF2E7D32),
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text("Master Cloud Push အတည်ပြုချက်", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "ဤစက်ထဲတွင် ရှိသော ကျောင်းသားများ၊ အတန်းများ၊ ဘာသာရပ်များနှင့် ၄ လစာ အမှတ်များအားလုံးကို Supabase Cloud သို့ Master အဖြစ် အပြည့်အစုံ တင်ပို့မည်ဖြစ်ပါသည်။",
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        "• ဤစက်ထဲရှိ Data များ လုံးဝ ပျက်ပြယ်ခြင်း မရှိပါ။\n• Cloud ပေါ်တွင် မရှိသေးသော Data များကို အဆင့်ဆင့် အစဉ်လိုက် ဖြည့်သွင်းပေးမည် ဖြစ်ပါသည်။\n• အင်တာနက် ချိတ်ဆက်မှု ကောင်းမွန်ရန် လိုအပ်ပါသည်။",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showMasterPushConfirmDialog = false
+                        coroutineScope.launch {
+                            isMasterPushing = true
+                            syncFeedbackMessage = null
+                            try {
+                                val res = com.example.data.sync.SyncManager.uploadAllLocalDataAsMaster(context) { progress ->
+                                    masterPushProgressText = progress
+                                }
+                                when (res) {
+                                    is com.example.data.sync.SyncResult.Success -> {
+                                        syncFeedbackIsError = false
+                                        syncFeedbackMessage = "Master Push အောင်မြင်ပါသည်: စုစုပေါင်း (${res.totalPushed}) ခုကို Cloud ပေါ်သို့ အောင်မြင်စွာ တင်ပို့ပြီးပါပြီ။"
+                                        Toast.makeText(context, "Master Cloud Push အောင်မြင်ပါသည်!", Toast.LENGTH_LONG).show()
+                                    }
+                                    is com.example.data.sync.SyncResult.Error -> {
+                                        syncFeedbackIsError = true
+                                        syncFeedbackMessage = "Master Push မအောင်မြင်ပါ: ${res.message}"
+                                        Toast.makeText(context, "Master Push အမှား: ${res.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                syncFeedbackIsError = true
+                                syncFeedbackMessage = "Master Push ချို့ယွင်းချက်: ${e.localizedMessage ?: "Unknown error"}"
+                            } finally {
+                                isMasterPushing = false
+                                masterPushProgressText = null
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20))
+                ) {
+                    Text("တင်ပို့မည် (Start Master Push)", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMasterPushConfirmDialog = false }) {
+                    Text("မလုပ်တော့ပါ")
                 }
             }
         )

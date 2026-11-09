@@ -93,21 +93,7 @@ fun AssessmentManagementScreen(
     val statusOptions = listOf("ALL", "DRAFT", "PUBLISHED", "COMPLETED", "ARCHIVED")
 
     Scaffold(
-        contentWindowInsets = WindowInsets(0.dp),
-        floatingActionButton = {
-            if (canCreate) {
-                SmallFloatingActionButton(
-                    onClick = {
-                        editingAssessment = null
-                        showCreateDialog = true
-                    },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Create Assessment")
-                }
-            }
-        }
+        contentWindowInsets = WindowInsets(0.dp)
     ) { innerPadding ->
         Column(
             modifier = Modifier

@@ -343,11 +343,12 @@ object SyncManager {
      * Flushes pending items in the outbox queue to Supabase.
      */
     suspend fun processOutboxQueue(context: Context): Int {
-        if (!_isNetworkAvailable.value || !SupabaseClientManager.isConfigured() || !SyncRepository.isHostReachable(SupabaseClientManager.supabaseUrl)) {
+        if (!_isNetworkAvailable.value || !SupabaseClientManager.isConfigured()) {
             return 0
         }
         val db = AppDatabase.getInstance(context)
         val outboxDao = db.syncOutboxDao()
+        outboxDao.resetFailedToPending()
         val pendingEntries = outboxDao.getPendingOutbox(limit = 50)
         if (pendingEntries.isEmpty()) return 0
 
@@ -385,11 +386,11 @@ object SyncManager {
             ?: return SyncResult.Error("Context not available for sync")
         appContext = ctx
 
-        if (!_isNetworkAvailable.value || !SyncRepository.isHostReachable(SupabaseClientManager.supabaseUrl)) {
+        if (!_isNetworkAvailable.value || !SupabaseClientManager.isConfigured()) {
             _connectionMode.value = SupabaseConnectionMode.OFFLINE
             val dirty = AppDatabase.getInstance(ctx).syncOutboxDao().getPendingCount()
             _syncState.value = SyncStatus.OfflinePending(dirty)
-            return SyncResult.Error("Offline: Supabase host unreachable. Operating in local cache mode.")
+            return SyncResult.Error("Offline: Network unavailable or Supabase not configured. Operating in local cache mode.")
         }
 
         return globalSyncMutex.withLock {
@@ -562,6 +563,51 @@ object SyncManager {
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "Could not count pending changes: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Executes Master Push to Cloud:
+     * Safely pushes all intact local data to Supabase in relational dependency order using upsert.
+     */
+    suspend fun uploadAllLocalDataAsMaster(
+        context: Context? = null,
+        onProgress: suspend (String) -> Unit = {}
+    ): SyncResult {
+        val ctx = context?.applicationContext ?: appContext
+            ?: return SyncResult.Error("Context not available for sync")
+        appContext = ctx
+
+        if (!_isNetworkAvailable.value || !SupabaseClientManager.isConfigured()) {
+            return SyncResult.Error("အင်တာနက် ချိတ်ဆက်မှုမရှိပါ သို့မဟုတ် Supabase URL/Key မပြည့်စုံပါ")
+        }
+
+        return globalSyncMutex.withLock {
+            _syncState.value = SyncStatus.Syncing
+            _connectionMode.value = SupabaseConnectionMode.SYNCING
+            try {
+                val db = AppDatabase.getInstance(ctx)
+                val repository = SyncRepository(db)
+                val result = repository.uploadAllLocalDataAsMaster(onProgress)
+                when (result) {
+                    is SyncResult.Success -> {
+                        _lastSyncTime.value = System.currentTimeMillis()
+                        _syncState.value = SyncStatus.Synced(_lastSyncTime.value)
+                        _connectionMode.value = SupabaseConnectionMode.ONLINE
+                    }
+                    is SyncResult.Error -> {
+                        _syncState.value = SyncStatus.SyncFailed(result.message)
+                        _connectionMode.value = if (_isNetworkAvailable.value) SupabaseConnectionMode.ONLINE else SupabaseConnectionMode.OFFLINE
+                    }
+                }
+                refreshPendingChangesCount(ctx)
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception in uploadAllLocalDataAsMaster: ${e.message}", e)
+                _syncState.value = SyncStatus.SyncFailed(e.message ?: "Unknown error")
+                refreshPendingChangesCount(ctx)
+                SyncResult.Error(e.message ?: "Unknown error")
             }
         }
     }

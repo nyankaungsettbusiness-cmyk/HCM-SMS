@@ -762,9 +762,10 @@ fun KindergartenReportCardSkeleton(
                             ) {
                                 Text(
                                     text = item.categoryName,
-                                    fontSize = 9.5.sp,
+                                    fontSize = 8.5.sp,
+                                    lineHeight = 12.sp,
                                     color = Color(0xFF1F2937),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1f).padding(end = 6.dp)
                                 )
                                 CompactStarRatingRow(rating = item.starRating, maxStars = item.maxStars)
                             }

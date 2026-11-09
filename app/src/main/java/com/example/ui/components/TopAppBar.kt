@@ -467,19 +467,19 @@ fun HcmTopAppBar(
                     if (pendingChangesCount > 0) {
                         OutlinedButton(
                             onClick = {
-                                com.example.data.sync.SyncManager.clearAllPendingChanges(context)
+                                com.example.data.sync.SyncManager.triggerSyncAsync(context, forceImmediate = true)
                                 android.widget.Toast.makeText(
                                     context,
-                                    "Pending စာရင်း ($pendingChangesCount) ခုကို ရှင်းလင်းပြီးပါပြီ",
+                                    "Pending စာရင်း ($pendingChangesCount) ခုကို Cloud သို့ ပို့ဆောင်နေပါသည်...",
                                     android.widget.Toast.LENGTH_SHORT
                                 ).show()
                                 showConnectionDialog = false
                             },
                             colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFFE65100)
+                                contentColor = MaterialTheme.colorScheme.primary
                             )
                         ) {
-                            Text("Pending ရှင်းမည်")
+                            Text("Retry Pending")
                         }
                     }
                     Button(

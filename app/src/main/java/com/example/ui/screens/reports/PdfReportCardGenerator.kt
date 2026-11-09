@@ -1100,11 +1100,27 @@ object PdfReportCardGenerator {
 
         curY = drawSectionHeaderBar(ctx.canvas, "5. Holistic Assessment (HCM)", curY)
 
+        val catNamePaint = TextPaint().apply {
+            color = COLOR_TEXT_DARK
+            textSize = 8.2f
+            isAntiAlias = true
+        }
+
         data.hcmSummary.pillars.forEach { pillarSummary ->
             val pHeaderHeight = 18f
             val pItems = pillarSummary.items.take(5)
-            val pRowHeight = 18f
-            val pBoxHeight = pHeaderHeight + (pItems.size * pRowHeight)
+
+            // Dynamically calculate row heights with StaticLayout wrapping for Myanmar text
+            val rowMeasurements = pItems.map { item ->
+                val starSpacing = 9f
+                val starsAreaWidth = (item.maxStars * starSpacing) + 14f
+                val availableTextWidth = (MARGIN_RIGHT - MARGIN_LEFT) - starsAreaWidth - 14f
+                val layout = createStaticLayout(item.categoryName, catNamePaint, availableTextWidth)
+                val rowHeight = maxOf(16f, layout.height.toFloat() + 4f)
+                Triple(item, layout, rowHeight)
+            }
+            val pTotalRowsHeight = rowMeasurements.sumOf { it.third.toDouble() }.toFloat()
+            val pBoxHeight = pHeaderHeight + pTotalRowsHeight
 
             if (curY + pBoxHeight > MAX_BOTTOM_Y && curY > 32f) {
                 ctx.startNewPage()
@@ -1115,7 +1131,7 @@ object PdfReportCardGenerator {
             if (currentCanvas != null) {
                 val pTitlePaint = TextPaint().apply {
                     color = COLOR_PRIMARY
-                    textSize = 9.5f
+                    textSize = 9.0f
                     isFakeBoldText = true
                     isAntiAlias = true
                 }
@@ -1124,41 +1140,40 @@ object PdfReportCardGenerator {
 
                 var rowY = curY + pHeaderHeight
 
-                pItems.forEachIndexed { idx, item ->
-                    val catNamePaint = TextPaint().apply {
-                        color = COLOR_TEXT_DARK
-                        textSize = 9.5f
-                        isAntiAlias = true
-                    }
-                    currentCanvas.drawText(item.categoryName, MARGIN_LEFT + 6f, rowY + 13f, catNamePaint)
+                rowMeasurements.forEachIndexed { idx, (item, layout, rowH) ->
+                    // Draw wrapped text cleanly without overlapping star rating column
+                    currentCanvas.save()
+                    val textTopY = rowY + ((rowH - layout.height) / 2f).coerceAtLeast(2f)
+                    currentCanvas.translate(MARGIN_LEFT + 6f, textTopY)
+                    layout.draw(currentCanvas)
+                    currentCanvas.restore()
 
-                    val starRadius = 3.5f
                     val starSpacing = 9f
                     val endX = MARGIN_RIGHT - 10f - (item.maxStars * starSpacing)
 
                     val starTextPaint = TextPaint().apply {
-                        textSize = 10f
+                        textSize = 9.5f
                         isAntiAlias = true
                     }
 
+                    val starCy = rowY + (rowH / 2f) + 3.5f
                     for (s in 1..item.maxStars) {
                         val starCx = endX + (s - 1) * starSpacing
-                        val starCy = rowY + 12f
                         val starSymbol = if (s <= item.starRating) "★" else "☆"
                         starTextPaint.color = if (s <= item.starRating) COLOR_ORANGE else COLOR_BORDER_LIGHT
                         currentCanvas.drawText(starSymbol, starCx, starCy, starTextPaint)
                     }
 
-                    if (idx < pItems.size - 1) {
-                        currentCanvas.drawLine(MARGIN_LEFT, rowY + pRowHeight, MARGIN_RIGHT, rowY + pRowHeight, innerLinePaint)
+                    if (idx < rowMeasurements.size - 1) {
+                        currentCanvas.drawLine(MARGIN_LEFT, rowY + rowH, MARGIN_RIGHT, rowY + rowH, innerLinePaint)
                     }
-                    rowY += pRowHeight
+                    rowY += rowH
                 }
 
                 currentCanvas.drawRect(MARGIN_LEFT, curY, MARGIN_RIGHT, curY + pBoxHeight, borderPaint)
             }
 
-            curY += pBoxHeight + 10f
+            curY += pBoxHeight + 8f
         }
 
         ctx.curY = curY

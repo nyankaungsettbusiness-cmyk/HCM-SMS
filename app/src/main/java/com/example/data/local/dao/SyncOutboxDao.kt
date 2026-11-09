@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface SyncOutboxDao {
 
-    @Query("SELECT * FROM sync_outbox WHERE status = 'PENDING' ORDER BY createdAt ASC LIMIT :limit")
+    @Query("SELECT * FROM sync_outbox WHERE (status = 'PENDING' OR (status = 'FAILED' AND retryCount < 5)) ORDER BY createdAt ASC LIMIT :limit")
     suspend fun getPendingOutbox(limit: Int = 100): List<SyncOutboxEntity>
 
     @Query("SELECT COUNT(*) FROM sync_outbox WHERE status IN ('PENDING', 'SYNCING', 'FAILED')")
@@ -16,6 +16,9 @@ interface SyncOutboxDao {
 
     @Query("SELECT COUNT(*) FROM sync_outbox WHERE status IN ('PENDING', 'SYNCING', 'FAILED')")
     fun observePendingCount(): Flow<Int>
+
+    @Query("UPDATE sync_outbox SET status = 'PENDING', retryCount = 0 WHERE status = 'FAILED'")
+    suspend fun resetFailedToPending()
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun enqueue(entry: SyncOutboxEntity): Long
