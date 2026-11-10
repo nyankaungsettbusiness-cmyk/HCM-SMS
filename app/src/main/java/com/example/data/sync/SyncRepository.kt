@@ -2115,7 +2115,9 @@ class SyncRepository(
         var pushed = 0; var pulled = 0
 
         val remoteMap = try {
-            client.from("student_marks").select().decodeList<StudentMarkSupabaseDto>()
+            client.from("student_marks").select {
+                limit(10000)
+            }.decodeList<StudentMarkSupabaseDto>()
                 .associateBy { it.uuid }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -2195,7 +2197,7 @@ class SyncRepository(
         val failedIdsThisRun = mutableSetOf<Long>()
 
         while (true) {
-            val allCandidates = dao.getStudentMarksForSync(limit = 300)
+            val allCandidates = dao.getStudentMarksForSync(limit = 1000)
             val unsynced = allCandidates.filter { it.id !in failedIdsThisRun }
             if (unsynced.isEmpty()) break
 
@@ -2238,8 +2240,8 @@ class SyncRepository(
             if (pushBatch.isEmpty()) break
 
             var chunkSuccess = 0
-            for (chunkIndex in pushBatch.indices step 50) {
-                val toIndex = minOf(chunkIndex + 50, pushBatch.size)
+            for (chunkIndex in pushBatch.indices step 250) {
+                val toIndex = minOf(chunkIndex + 250, pushBatch.size)
                 val chunk = pushBatch.subList(chunkIndex, toIndex)
                 val chunkSynced = syncedPairs.subList(chunkIndex, toIndex)
 
@@ -2402,7 +2404,9 @@ class SyncRepository(
         var pushed = 0; var pulled = 0
 
         val remoteMap = try {
-            client.from("assessment_results").select().decodeList<AssessmentResultSupabaseDto>()
+            client.from("assessment_results").select {
+                limit(10000)
+            }.decodeList<AssessmentResultSupabaseDto>()
                 .associateBy { it.uuid }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -2410,8 +2414,11 @@ class SyncRepository(
             emptyMap()
         }
 
+        val failedIdsThisRun = mutableSetOf<Long>()
+
         while (true) {
-            val unsynced = dao.getAssessmentResultsForSync(limit = 300)
+            val allCandidates = dao.getAssessmentResultsForSync(limit = 1000)
+            val unsynced = allCandidates.filter { it.id !in failedIdsThisRun }
             if (unsynced.isEmpty()) break
 
             val pushBatch = mutableListOf<AssessmentResultPushDto>()
@@ -2438,8 +2445,8 @@ class SyncRepository(
             if (pushBatch.isEmpty()) break
 
             var batchSuccess = 0
-            for (chunkIndex in pushBatch.indices step 50) {
-                val toIndex = minOf(chunkIndex + 50, pushBatch.size)
+            for (chunkIndex in pushBatch.indices step 250) {
+                val toIndex = minOf(chunkIndex + 250, pushBatch.size)
                 val chunk = pushBatch.subList(chunkIndex, toIndex)
                 val chunkSynced = syncedPairs.subList(chunkIndex, toIndex)
 
@@ -2464,11 +2471,15 @@ class SyncRepository(
                             throw ce
                         } catch (ex: Exception) {
                             Log.e(TAG, "Failed single assessment_result push (id=$id): ${ex.message}")
+                            failedIdsThisRun.add(id)
                         }
                     }
                 }
             }
-            if (batchSuccess == 0) break
+            if (batchSuccess == 0 && syncedPairs.all { it.first in failedIdsThisRun }) {
+                Log.w(TAG, "Aborting assessment_results sync loop: All candidate items in current batch failed.")
+                break
+            }
         }
 
         val localAssessmentCache = mutableMapOf<Long, Long>()
@@ -2476,7 +2487,9 @@ class SyncRepository(
 
         try {
             val remotes = remoteMap.values.ifEmpty {
-                client.from("assessment_results").select().decodeList<AssessmentResultSupabaseDto>()
+                client.from("assessment_results").select {
+                    limit(10000)
+                }.decodeList<AssessmentResultSupabaseDto>()
             }
             val pulledSummaries = mutableListOf<AssessmentResultSummaryEntity>()
 
@@ -2619,7 +2632,9 @@ class SyncRepository(
         var pushed = 0; var pulled = 0
 
         val remoteMap = try {
-            client.from("holistic_results").select().decodeList<HolisticResultSupabaseDto>()
+            client.from("holistic_results").select {
+                limit(10000)
+            }.decodeList<HolisticResultSupabaseDto>()
                 .associateBy { it.uuid }
         } catch (e: Exception) {
             emptyMap()
@@ -2660,7 +2675,9 @@ class SyncRepository(
 
         try {
             val remotes = remoteMap.values.ifEmpty {
-                client.from("holistic_results").select().decodeList<HolisticResultSupabaseDto>()
+                client.from("holistic_results").select {
+                    limit(10000)
+                }.decodeList<HolisticResultSupabaseDto>()
             }
             for (remoteDto in remotes) {
                 val existingLocal = if (remoteDto.uuid.isNotBlank()) dao.getHolisticResultByUuid(remoteDto.uuid) else null
@@ -2890,7 +2907,9 @@ class SyncRepository(
         var pushed = 0; var pulled = 0
 
         val remoteMap = try {
-            client.from("attendance_records").select().decodeList<AttendanceRecordSupabaseDto>()
+            client.from("attendance_records").select {
+                limit(10000)
+            }.decodeList<AttendanceRecordSupabaseDto>()
                 .associateBy { it.uuid }
         } catch (e: Exception) {
             emptyMap()
@@ -2930,7 +2949,9 @@ class SyncRepository(
 
         try {
             val remotes = remoteMap.values.ifEmpty {
-                client.from("attendance_records").select().decodeList<AttendanceRecordSupabaseDto>()
+                client.from("attendance_records").select {
+                    limit(10000)
+                }.decodeList<AttendanceRecordSupabaseDto>()
             }
             for (remoteDto in remotes) {
                 val existingLocal = if (remoteDto.uuid.isNotBlank()) dao.getAttendanceRecordByUuid(remoteDto.uuid) else null
