@@ -119,8 +119,8 @@ class SyncRepository(
             dirtyCount += teacherDao.getTeachersForSync().count { it.isDirty }
             userDao?.let { dirtyCount += it.getUsersForSync().count { u -> u.isDirty } }
             marksDao?.let {
-                dirtyCount += it.getStudentMarksForSync(limit = 100).count { m -> m.isDirty }
-                dirtyCount += it.getAssessmentResultsForSync(limit = 100).count { r -> r.isDirty }
+                dirtyCount += it.getDirtyMarksCount()
+                dirtyCount += it.getDirtyResultsCount()
             }
             attendanceDao?.let { dirtyCount += it.getAttendanceRecordsForSync(limit = 100).count { a -> a.isDirty } }
             assessmentDao?.let { dirtyCount += it.getAssessmentsForSync().count { a -> a.isDirty } }
@@ -268,10 +268,19 @@ class SyncRepository(
             totalPushed += pTypes + pExams + pPolicies + pPeriods + pAssessments
 
             // 5. Academic Performance: Student Marks & Results
-            onProgress("ကျောင်းသားများ၏ ၄ လစာ အမှတ်များ Cloud သို့ ပို့နေသည်...")
-            val (pMarks, _) = syncStudentMarksInternal(client)
+            var totalMarksPushed = 0
+            var pushPass = 0
+            while (pushPass < 20) {
+                pushPass++
+                val dirtyMarks = marksDao?.getDirtyMarksCount() ?: 0
+                if (dirtyMarks == 0) break
+                onProgress("အမှတ်များ Cloud သို့ တင်ပို့နေသည် (ကျန်ရှိ: $dirtyMarks ခု)...")
+                val (pMarks, _) = syncStudentMarksInternal(client)
+                totalMarksPushed += pMarks
+                if (pMarks <= 0) break
+            }
             val (pResults, _) = syncAssessmentResultsInternal(client)
-            totalPushed += pMarks + pResults
+            totalPushed += totalMarksPushed + pResults
 
             // 6. Holistic & Well-being: Holistic, SGI, Comments, Attendance, Promotion
             onProgress("Holistic စစ်ဆေးမှုနှင့် ခွင့်/ပျက် စာရင်းများ Cloud သို့ ပို့နေသည်...")
@@ -2183,8 +2192,11 @@ class SyncRepository(
             }
         }
 
+        val failedIdsThisRun = mutableSetOf<Long>()
+
         while (true) {
-            val unsynced = dao.getStudentMarksForSync(limit = 300)
+            val allCandidates = dao.getStudentMarksForSync(limit = 300)
+            val unsynced = allCandidates.filter { it.id !in failedIdsThisRun }
             if (unsynced.isEmpty()) break
 
             val pushBatch = mutableListOf<StudentMarkPushDto>()
@@ -2254,12 +2266,16 @@ class SyncRepository(
                             throw ce
                         } catch (ex: Exception) {
                             Log.e(TAG, "Failed single student_mark push (id=$id): ${ex.message}")
+                            failedIdsThisRun.add(id)
                         }
                     }
                 }
             }
 
-            if (chunkSuccess == 0) break
+            if (chunkSuccess == 0 && syncedPairs.all { it.first in failedIdsThisRun }) {
+                Log.w(TAG, "No further marks can be pushed in this pass (${failedIdsThisRun.size} problematic items deferred).")
+                break
+            }
         }
 
         val localAssessmentCache = mutableMapOf<Long, Long>()
@@ -2267,7 +2283,9 @@ class SyncRepository(
 
         try {
             val remotes = remoteMap.values.ifEmpty {
-                client.from("student_marks").select().decodeList<StudentMarkSupabaseDto>()
+                client.from("student_marks").select {
+                    limit(10000)
+                }.decodeList<StudentMarkSupabaseDto>()
             }
             val pulledEntities = mutableListOf<StudentMarkEntity>()
 
@@ -3123,16 +3141,19 @@ class SyncRepository(
             return byUuid.id
         }
 
-        // 2. Try finding by match
+        // 2. Try finding by robust match (Grade + Month or Title)
         val byMatch = try {
-            client.from("assessments").select {
-                filter {
-                    eq("title", localAssessment.assessmentName)
-                    eq("grade", localAssessment.grade)
-                    eq("subject", localAssessment.subjectName)
-                    eq("assessment_type", localAssessment.assessmentType)
-                }
-            }.decodeList<AssessmentSupabaseDto>().firstOrNull()
+            val allRemoteAssessments = client.from("assessments").select {
+                filter { eq("grade", localAssessment.grade) }
+            }.decodeList<AssessmentSupabaseDto>()
+            val effectiveMonth = localAssessment.month.trim()
+            allRemoteAssessments.firstOrNull { remote ->
+                val remoteMonth = (remote.month ?: remote.assessmentPeriod).trim()
+                val monthMatches = effectiveMonth.isNotBlank() && (remoteMonth.contains(effectiveMonth, ignoreCase = true) || effectiveMonth.contains(remoteMonth, ignoreCase = true))
+                val titleMatches = remote.title.trim().contains(localAssessment.assessmentName.trim(), ignoreCase = true) ||
+                                   localAssessment.assessmentName.trim().contains(remote.title.trim(), ignoreCase = true)
+                monthMatches || titleMatches
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -3219,11 +3240,13 @@ class SyncRepository(
         }
 
         val allLocal = dao.getAllAssessmentsList()
-        val localByMatch = allLocal.firstOrNull {
-            it.grade.equals(remoteAssessmentDto.grade, ignoreCase = true) &&
-            it.subjectName.equals(remoteAssessmentDto.subject, ignoreCase = true) &&
-            it.assessmentName.equals(remoteAssessmentDto.title, ignoreCase = true) &&
-            it.assessmentType.equals(remoteAssessmentDto.assessmentType, ignoreCase = true)
+        val remoteMonth = (remoteAssessmentDto.month ?: remoteAssessmentDto.assessmentPeriod).trim()
+        val localByMatch = allLocal.firstOrNull { local ->
+            val gradeMatches = local.grade.trim().equals(remoteAssessmentDto.grade.trim(), ignoreCase = true)
+            val monthMatches = local.month.isNotBlank() && (remoteMonth.contains(local.month.trim(), ignoreCase = true) || local.month.trim().contains(remoteMonth, ignoreCase = true))
+            val titleMatches = local.assessmentName.trim().contains(remoteAssessmentDto.title.trim(), ignoreCase = true) ||
+                               remoteAssessmentDto.title.trim().contains(local.assessmentName.trim(), ignoreCase = true)
+            gradeMatches && (monthMatches || titleMatches)
         }
 
         if (localByMatch != null) {

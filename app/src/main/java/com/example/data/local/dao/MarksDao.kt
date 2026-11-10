@@ -74,6 +74,9 @@ interface MarksDao {
     @Query("SELECT * FROM assessment_results WHERE isDirty = 1 LIMIT :limit")
     suspend fun getAssessmentResultsForSync(limit: Int = 300): List<AssessmentResultSummaryEntity>
 
+    @Query("SELECT COUNT(*) FROM assessment_results WHERE isDirty = 1")
+    suspend fun getDirtyResultsCount(): Int
+
     @Query("SELECT * FROM assessment_results WHERE uuid = :uuid LIMIT 1")
     suspend fun getAssessmentResultByUuid(uuid: String): AssessmentResultSummaryEntity?
 
