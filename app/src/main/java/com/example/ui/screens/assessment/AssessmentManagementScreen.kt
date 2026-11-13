@@ -853,8 +853,8 @@ fun AssessmentFormDialog(
 ) {
     val allAssessments by assessmentViewModel.allAssessments.collectAsState()
 
-    var selectedGrade by remember { mutableStateOf(assessment?.grade ?: "G5") }
-    var selectedGrades by remember { mutableStateOf(setOf(assessment?.grade ?: "G5")) }
+    var selectedGrade by remember { mutableStateOf(assessment?.grade ?: "") }
+    var selectedGrades by remember { mutableStateOf(if (assessment != null && assessment.grade.isNotBlank()) setOf(assessment.grade) else emptySet<String>()) }
     var selectedClass by remember { mutableStateOf(assessment?.className ?: "All Classes") }
     var selectedSubject by remember { mutableStateOf(assessment?.subjectName ?: "Mathematics") }
     var selectedSubjectType by remember { mutableStateOf(assessment?.subjectType ?: "Academic Subject") }
@@ -1023,12 +1023,12 @@ fun AssessmentFormDialog(
                                 selected = isSel,
                                 onClick = {
                                     val nextSet = if (isSel) {
-                                        if (selectedGrades.size > 1) selectedGrades - g else selectedGrades
+                                        selectedGrades - g
                                     } else {
                                         selectedGrades + g
                                     }
                                     selectedGrades = nextSet
-                                    selectedGrade = g
+                                    selectedGrade = nextSet.firstOrNull() ?: ""
                                 },
                                 label = { Text(g, fontSize = 10.sp) },
                                 modifier = Modifier.height(28.dp)
@@ -1331,9 +1331,9 @@ fun AssessmentFormDialog(
         },
         confirmButton = {
             Button(
-                enabled = duplicateErrorMessage == null && assessmentName.isNotBlank() && (isFullGradeAssessment || selectedSubject.isNotBlank()),
+                enabled = duplicateErrorMessage == null && assessmentName.isNotBlank() && selectedGrades.isNotEmpty() && (isFullGradeAssessment || selectedSubject.isNotBlank()),
                 onClick = {
-                    if (duplicateErrorMessage == null && assessmentName.isNotBlank() && (isFullGradeAssessment || selectedSubject.isNotBlank())) {
+                    if (duplicateErrorMessage == null && assessmentName.isNotBlank() && selectedGrades.isNotEmpty() && (isFullGradeAssessment || selectedSubject.isNotBlank())) {
                         val finalSubjectName = if (isFullGradeAssessment) "All Subjects" else selectedSubject
                         val finalSubjectType = if (isFullGradeAssessment) "All" else selectedSubjectType
                         val finalAssessmentType = when (selectedAssessmentType) {

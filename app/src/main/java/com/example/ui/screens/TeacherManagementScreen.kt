@@ -75,22 +75,7 @@ fun TeacherManagementScreen(
     val canDeleteTeachers = currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.role == UserRole.ADMIN
 
     Scaffold(
-        contentWindowInsets = WindowInsets(0.dp),
-        floatingActionButton = {
-            if (canEditTeachers) {
-                FloatingActionButton(
-                    onClick = {
-                        teacherToEdit = null
-                        showAddEditDialog = true
-                    },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Teacher", modifier = Modifier.size(22.dp))
-                }
-            }
-        }
+        contentWindowInsets = WindowInsets(0.dp)
     ) { innerPadding ->
         Column(
             modifier = Modifier

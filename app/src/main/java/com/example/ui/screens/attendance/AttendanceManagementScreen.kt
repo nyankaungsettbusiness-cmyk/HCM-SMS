@@ -98,7 +98,7 @@ fun AttendanceManagementScreen(
     val academicYears = if (availableAcademicYears.isNotEmpty()) (availableAcademicYears + academicYear).filter { it.isNotBlank() }.distinct() else listOf(academicYear).filter { it.isNotBlank() }
     val sessions = listOf("Morning", "Evening")
     val grades = if (dbGrades.isNotEmpty()) dbGrades.map { it.gradeName } else SchoolPolicy.VALID_GRADES
-    val classes = if (dbClasses.isNotEmpty()) dbClasses.map { it.className }.distinct() else listOf("A", "B", "C", "D")
+    val classes = listOf("All") + (if (dbClasses.isNotEmpty()) dbClasses.map { it.className }.distinct().filter { it.isNotBlank() && it != "All" } else listOf("A", "B", "C", "D"))
 
     Scaffold(
         contentWindowInsets = WindowInsets(0.dp),
@@ -623,42 +623,58 @@ fun AttendanceManagementScreen(
                 }
 
                 // Configuration Row: School Days & Quick Action
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedTextField(
-                        value = if (monthlySchoolDays > 0) monthlySchoolDays.toString() else "",
-                        onValueChange = { str ->
-                            val v = str.filter { it.isDigit() }.toIntOrNull() ?: 0
-                            attendanceViewModel.setMonthlySchoolDays(v)
-                        },
-                        label = { Text("School Days (ရက်ပေါင်း)", fontSize = 11.sp) },
+                    Row(
                         modifier = Modifier
-                            .weight(1.1f)
-                            .height(50.dp),
-                        singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
-                        keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
-                    )
-
-                    Button(
-                        onClick = {
-                            attendanceViewModel.markAllFullMonthly()
-                            snackbarMessage = "All students set to full attendance ($monthlySchoolDays days)"
-                        },
-                        enabled = canEdit,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .weight(1.3f)
-                            .height(46.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("All Full Attendance", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(
+                            text = "School Days:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Box(modifier = Modifier.width(64.dp)) {
+                            MonthlyNumberInputBox(
+                                value = if (monthlySchoolDays > 0) monthlySchoolDays.toString() else "",
+                                onValueChange = { str ->
+                                    val v = str.filter { it.isDigit() }.toIntOrNull() ?: 0
+                                    attendanceViewModel.setMonthlySchoolDays(v)
+                                },
+                                color = MaterialTheme.colorScheme.primary,
+                                enabled = canEdit
+                            )
+                        }
+                        Text(
+                            text = "ရက်",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        Button(
+                            onClick = {
+                                attendanceViewModel.markAllFullMonthly()
+                                snackbarMessage = "All students set to full attendance ($monthlySchoolDays days)"
+                            },
+                            enabled = canEdit,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("All Full Attendance", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
                     }
                 }
 
@@ -997,6 +1013,49 @@ private fun StatusOptionItem(
 }
 
 @Composable
+private fun MonthlyNumberInputBox(
+    value: String,
+    onValueChange: (String) -> Unit,
+    color: Color,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        enabled = enabled,
+        singleLine = true,
+        textStyle = TextStyle(
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            color = color
+        ),
+        keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+        decorationBox = { innerTextField ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(6.dp)
+                    )
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        shape = RoundedCornerShape(6.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                innerTextField()
+            }
+        },
+        modifier = modifier
+    )
+}
+
+@Composable
 private fun MonthlyStudentAttendanceRow(
     item: MonthlyStudentAttendanceInput,
     schoolDays: Int,
@@ -1041,7 +1100,7 @@ private fun MonthlyStudentAttendanceRow(
 
         // Present Days
         Box(modifier = Modifier.weight(1.0f).padding(horizontal = 2.dp)) {
-            OutlinedTextField(
+            MonthlyNumberInputBox(
                 value = presentText,
                 onValueChange = { str ->
                     val clean = str.filter { it.isDigit() || it == '.' }
@@ -1052,17 +1111,14 @@ private fun MonthlyStudentAttendanceRow(
                     absentText = if (a % 1.0 == 0.0) a.toInt().toString() else a.toString()
                     onUpdate(p, a, l)
                 },
-                enabled = canEdit,
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, color = Color(0xFF15803D)),
-                modifier = Modifier.height(44.dp).fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)
+                color = Color(0xFF15803D),
+                enabled = canEdit
             )
         }
 
         // Absent Days
         Box(modifier = Modifier.weight(1.0f).padding(horizontal = 2.dp)) {
-            OutlinedTextField(
+            MonthlyNumberInputBox(
                 value = absentText,
                 onValueChange = { str ->
                     val clean = str.filter { it.isDigit() || it == '.' }
@@ -1073,17 +1129,14 @@ private fun MonthlyStudentAttendanceRow(
                     presentText = if (p % 1.0 == 0.0) p.toInt().toString() else p.toString()
                     onUpdate(p, a, l)
                 },
-                enabled = canEdit,
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, color = Color(0xFFB91C1C)),
-                modifier = Modifier.height(44.dp).fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)
+                color = Color(0xFFB91C1C),
+                enabled = canEdit
             )
         }
 
         // Leave Days
         Box(modifier = Modifier.weight(1.0f).padding(horizontal = 2.dp)) {
-            OutlinedTextField(
+            MonthlyNumberInputBox(
                 value = leaveText,
                 onValueChange = { str ->
                     val clean = str.filter { it.isDigit() || it == '.' }
@@ -1094,11 +1147,8 @@ private fun MonthlyStudentAttendanceRow(
                     presentText = if (p % 1.0 == 0.0) p.toInt().toString() else p.toString()
                     onUpdate(p, a, l)
                 },
-                enabled = canEdit,
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, color = Color(0xFF65558F)),
-                modifier = Modifier.height(44.dp).fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)
+                color = Color(0xFF65558F),
+                enabled = canEdit
             )
         }
     }

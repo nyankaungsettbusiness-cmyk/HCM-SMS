@@ -1046,12 +1046,41 @@ data class HolisticCategorySupabaseDto(
     fun toEntity(existingLocalId: Long = 0): HolisticCategoryEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val resolvedName = categoryName.ifBlank { name }.ifBlank { code }
+
+        val extractedLevel = when {
+            // Known 15 KG categories created for KG (IDs 763 to 777)
+            id != null && id in 763L..777L -> "KINDERGARTEN"
+            code.contains("KINDERGARTEN", ignoreCase = true) || code.contains("[KG]", ignoreCase = true) -> "KINDERGARTEN"
+            description.contains("[KINDERGARTEN]", ignoreCase = true) || description.contains("[KG]", ignoreCase = true) -> "KINDERGARTEN"
+            code.contains("SECONDARY", ignoreCase = true) || description.contains("[SECONDARY]", ignoreCase = true) -> "SECONDARY"
+            code.contains("HIGH_SCHOOL", ignoreCase = true) || description.contains("[HIGH_SCHOOL]", ignoreCase = true) -> "HIGH_SCHOOL"
+            resolvedName.contains("အမှားဝန်ခံခြင်း (ပျက်စီးမှု") ||
+                    resolvedName.contains("ပိုင်ဆိုင်မှုခွဲခြားသိမြင်ခြင်း") ||
+                    resolvedName.contains("စည်းကမ်းစောင့်ထိန်းခြင်း") ||
+                    resolvedName.contains("ခံစားချက်ကို မှန်ကန်စွာဖော်ထုတ်ခြင်း") ||
+                    resolvedName.contains("မိမိလုပ်ဆောင်မှုကို ရိုးသားစွာပြောပြခြင်း") ||
+                    resolvedName.contains("စိတ်ဝင်တစားမေးခွန်းထုတ်ခြင်း") ||
+                    resolvedName.contains("အသစ်အဆန်းကိုစမ်းသပ်လိုစိတ်") ||
+                    resolvedName.contains("အဖြေရှာရန်ကြိုးစားအားထုတ်ခြင်း") ||
+                    resolvedName.contains("အာရုံစိုက်နားထောင်မှတ်ယူခြင်း") ||
+                    resolvedName.contains("တီထွင်ဖန်တီးခြင်း (အရုပ်ဆက်") ||
+                    resolvedName.contains("မိမိအလှည့်ကို စိတ်ရှည်စွာစောင့်ဆိုင်းခြင်း") ||
+                    resolvedName.contains("ငြိမ်သက်ခြင်း (တရားထိုင်ခြင်း") ||
+                    resolvedName.contains("ပစ္စည်းသိမ်းဆည်မှု သတိ") ||
+                    resolvedName.contains("သူတပါးခံစားချက်ကိုသတိပြုမိခြင်း") ||
+                    resolvedName.contains("ခန္ဓာကိုယ်လှုပ်ရှားမှု သတိရှိခြင်း") -> "KINDERGARTEN"
+            else -> "PRIMARY"
+        }
+
+        val cleanDescription = description.replace(Regex("^\\[(KINDERGARTEN|PRIMARY|SECONDARY|HIGH_SCHOOL|KG)\\]\\s*"), "").trim()
+        val resolvedPillar = domain.ifBlank { "HONESTY" }.uppercase()
+
         return HolisticCategoryEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             categoryName = resolvedName,
-            description = description,
-            pillar = domain,
-            educationLevel = "PRIMARY",
+            description = cleanDescription,
+            pillar = resolvedPillar,
+            educationLevel = extractedLevel,
             maxStars = maxStars,
             isEnabled = isEnabled,
             isDefault = isDefault,
@@ -1067,7 +1096,18 @@ data class HolisticCategorySupabaseDto(
         fun fromEntity(entity: HolisticCategoryEntity): HolisticCategorySupabaseDto {
             val validUuid = entity.uuid.ifBlank { UUID.randomUUID().toString() }
             val validName = entity.categoryName
-            val validCode = "CAT_${if (entity.id > 0) entity.id else validUuid.take(8).uppercase()}"
+
+            val rawLevel = entity.educationLevel.trim().uppercase()
+            val levelTag = when {
+                rawLevel.contains("KG") || rawLevel.contains("KINDER") -> "KINDERGARTEN"
+                rawLevel.contains("SEC") || rawLevel.contains("MIDDLE") -> "SECONDARY"
+                rawLevel.contains("HIGH") -> "HIGH_SCHOOL"
+                else -> "PRIMARY"
+            }
+            val cleanDesc = entity.description.replace(Regex("^\\[[^\\]]+\\]\\s*"), "").trim()
+            val finalDesc = "[$levelTag] $cleanDesc".trim()
+            val validCode = "[$levelTag]_CAT_${if (entity.id > 0) entity.id else validUuid.take(8).uppercase()}"
+
             return HolisticCategorySupabaseDto(
                 id = if (entity.id > 0) entity.id else null,
                 uuid = validUuid,
@@ -1075,7 +1115,7 @@ data class HolisticCategorySupabaseDto(
                 name = validName,
                 domain = entity.pillar,
                 categoryName = validName,
-                description = entity.description,
+                description = finalDesc,
                 maxStars = entity.maxStars,
                 isEnabled = entity.isEnabled,
                 isDefault = entity.isDefault,

@@ -2647,11 +2647,10 @@ class SyncRepository(
 
                 val targetUuid = existingRemote?.uuid ?: assignedUuid
                 val baseDto = HolisticCategorySupabaseDto.fromEntity(updated)
-                val existingCode = existingRemote?.code?.ifBlank { null }
                 val dto = baseDto.copy(
                     id = existingRemote?.id,
                     uuid = targetUuid,
-                    code = existingCode ?: baseDto.code.ifBlank { "CAT_${updated.id.takeIf { it > 0 } ?: targetUuid.take(8).uppercase()}" }
+                    code = baseDto.code
                 )
                 client.from("holistic_categories").upsert(dto, onConflict = "uuid")
                 dao.markHolisticCategorySynced(updated.id, targetUuid)

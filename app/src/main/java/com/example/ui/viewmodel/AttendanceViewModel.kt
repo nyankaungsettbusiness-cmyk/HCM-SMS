@@ -55,7 +55,7 @@ class AttendanceViewModel(
     private val _selectedGrade = MutableStateFlow("G1")
     val selectedGrade: StateFlow<String> = _selectedGrade.asStateFlow()
 
-    private val _selectedClass = MutableStateFlow("A")
+    private val _selectedClass = MutableStateFlow("All")
     val selectedClass: StateFlow<String> = _selectedClass.asStateFlow()
 
     private val _selectedSession = MutableStateFlow(AttendanceSession.MORNING)
@@ -129,8 +129,15 @@ class AttendanceViewModel(
                 }
             }
         }.filter { student ->
-            student.gradeName.equals(grade, ignoreCase = true) &&
-                    (clazz == "All" || clazz == "All Classes" || student.className.equals(clazz, ignoreCase = true))
+            val normGrade = student.gradeName.trim()
+            val matchesGrade = normGrade.equals(grade.trim(), ignoreCase = true) ||
+                    (grade.trim().equals("KG", ignoreCase = true) && (normGrade.contains("KG", ignoreCase = true) || normGrade.contains("Kindergarten", ignoreCase = true)))
+
+            val matchesClass = clazz == "All" || clazz == "All Classes" || clazz.isBlank() ||
+                    student.className.equals(clazz, ignoreCase = true) ||
+                    (clazz == "A" && (student.className.isBlank() || student.className.equals("None", ignoreCase = true) || student.className == "-"))
+
+            matchesGrade && matchesClass
         }.sortedBy { it.rollNumber }
     }.stateIn(
         scope = viewModelScope,
