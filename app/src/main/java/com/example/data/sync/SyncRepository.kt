@@ -106,7 +106,7 @@ class SyncRepository(
                 } catch (ce: kotlinx.coroutines.CancellationException) {
                     throw ce
                 } catch (e: Exception) {
-                    Log.w(TAG, "fetchAllRemotePaged($table) error at range $from..$to: ${e.message}")
+                    Log.w("SyncRepository", "fetchAllRemotePaged($table) error at range $from..$to: ${e.message}")
                     emptyList()
                 }
                 if (page.isEmpty()) break
