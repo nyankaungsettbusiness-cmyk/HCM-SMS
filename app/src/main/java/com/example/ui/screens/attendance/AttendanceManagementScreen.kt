@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,6 +39,8 @@ import com.example.data.local.entity.AttendanceSession
 import com.example.data.local.entity.AttendanceStatus
 import com.example.data.local.entity.UserEntity
 import com.example.data.policy.SchoolPolicy
+import com.example.data.repository.MonthlyStudentAttendanceInput
+import com.example.ui.viewmodel.AttendanceMode
 import com.example.ui.viewmodel.AttendanceViewModel
 import com.example.ui.viewmodel.SchoolPolicyViewModel
 import com.example.ui.viewmodel.StudentAttendanceUiItem
@@ -61,6 +65,11 @@ fun AttendanceManagementScreen(
     val sessionStats by attendanceViewModel.sessionStats.collectAsState()
     val statusMessage by attendanceViewModel.statusMessage.collectAsState()
     val isSaving by attendanceViewModel.isSaving.collectAsState()
+
+    val selectedMode by attendanceViewModel.selectedMode.collectAsState()
+    val selectedMonth by attendanceViewModel.selectedMonth.collectAsState()
+    val monthlySchoolDays by attendanceViewModel.monthlySchoolDays.collectAsState()
+    val monthlyUiList by attendanceViewModel.monthlyUiList.collectAsState()
 
     // Screen-scoped Supabase Realtime for active live attendance collaboration
     DisposableEffect(Unit) {
@@ -118,110 +127,189 @@ fun AttendanceManagementScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    // SUMMARY: Present : 28 | Absent : 2 | Late : 1 | Leave : 1
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 6.dp)
-                    ) {
-                        Row(
+                    if (selectedMode == AttendanceMode.DAILY) {
+                        // SUMMARY: Present : 28 | Absent : 2 | Late : 1 | Leave : 1
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(6.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceAround,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(bottom = 6.dp)
                         ) {
-                            Text(
-                                text = "Present : ${sessionStats.presentCount}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF15803D)
-                            )
-                            Text(
-                                text = "Absent : ${sessionStats.absentCount}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFB91C1C)
-                            )
-                            Text(
-                                text = "Late : ${sessionStats.lateCount}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFD97706)
-                            )
-                            Text(
-                                text = "Leave : ${sessionStats.leaveCount}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF65558F)
-                            )
-                        }
-                    }
-
-                    // BOTTOM BUTTONS: Save, Submit, Cancel
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Cancel / Edit: Return to editable state
-                        OutlinedButton(
-                            onClick = {
-                                isLocked = false
-                                attendanceViewModel.setSearchQuery("")
-                                focusManager.clearFocus()
-                                snackbarMessage = "Attendance returned to editable state."
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .defaultMinSize(minHeight = 38.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
-                        ) {
-                            Text(if (isLocked) "Edit" else "Cancel", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceAround,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Present : ${sessionStats.presentCount}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF15803D)
+                                )
+                                Text(
+                                    text = "Absent : ${sessionStats.absentCount}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB91C1C)
+                                )
+                                Text(
+                                    text = "Late : ${sessionStats.lateCount}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFD97706)
+                                )
+                                Text(
+                                    text = "Leave : ${sessionStats.leaveCount}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF65558F)
+                                )
+                            }
                         }
 
-                        // Save: Save entered attendance and lock from further editing
-                        Button(
-                            onClick = {
-                                focusManager.clearFocus()
-                                attendanceViewModel.saveAttendance(currentUser?.fullName ?: "Teacher")
-                                isLocked = true
-                                snackbarMessage = "Attendance saved and locked from further editing."
-                            },
-                            enabled = !isSaving && canEdit && !isLocked,
-                            modifier = Modifier
-                                .weight(1f)
-                                .defaultMinSize(minHeight = 38.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                        // BOTTOM BUTTONS: Save, Submit, Cancel
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            // Cancel / Edit: Return to editable state
+                            OutlinedButton(
+                                onClick = {
+                                    isLocked = false
+                                    attendanceViewModel.setSearchQuery("")
+                                    focusManager.clearFocus()
+                                    snackbarMessage = "Attendance returned to editable state."
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .defaultMinSize(minHeight = 38.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                            ) {
+                                Text(if (isLocked) "Edit" else "Cancel", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            }
+
+                            // Save: Save entered attendance and lock from further editing
+                            Button(
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    attendanceViewModel.saveAttendance(currentUser?.fullName ?: "Teacher")
+                                    isLocked = true
+                                    snackbarMessage = "Attendance saved and locked from further editing."
+                                },
+                                enabled = !isSaving && canEdit && !isLocked,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .defaultMinSize(minHeight = 38.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+
+                            // Submit: Display/confirm submitted data
+                            Button(
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    attendanceViewModel.saveAttendance(currentUser?.fullName ?: "Teacher")
+                                    isLocked = true
+                                    snackbarMessage = "Attendance confirmed & submitted."
+                                },
+                                enabled = !isSaving && canEdit,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .defaultMinSize(minHeight = 38.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Submit", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+                    } else {
+                        // MONTHLY SUMMARY BOTTOM BAR
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Month: $selectedMonth",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "School Days: $monthlySchoolDays days",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF15803D)
+                                )
+                                Text(
+                                    text = "Students: ${monthlyUiList.size}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
-                        // Submit: Display/confirm submitted data
-                        Button(
-                            onClick = {
-                                focusManager.clearFocus()
-                                attendanceViewModel.saveAttendance(currentUser?.fullName ?: "Teacher")
-                                isLocked = true
-                                snackbarMessage = "Attendance confirmed & submitted."
-                            },
-                            enabled = !isSaving && canEdit,
-                            modifier = Modifier
-                                .weight(1f)
-                                .defaultMinSize(minHeight = 38.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Submit", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            OutlinedButton(
+                                onClick = {
+                                    attendanceViewModel.markAllFullMonthly()
+                                    snackbarMessage = "All students set to $monthlySchoolDays days full attendance."
+                                },
+                                enabled = canEdit && !isSaving,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .defaultMinSize(minHeight = 38.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("All Full", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            }
+
+                            Button(
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    attendanceViewModel.saveMonthlyAttendance(currentUser?.fullName ?: "Teacher")
+                                    snackbarMessage = "Saving monthly attendance..."
+                                },
+                                enabled = !isSaving && canEdit,
+                                modifier = Modifier
+                                    .weight(1.5f)
+                                    .defaultMinSize(minHeight = 38.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save Monthly", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
                     }
                 }
@@ -286,186 +374,374 @@ fun AttendanceManagementScreen(
                 }
             }
 
-            // TOP SECTION: Dropdowns (Academic Year, Date, Session, Grade, Class)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            // TAB SELECTOR: Daily Roll Call vs Monthly Summary
+            TabRow(
+                selectedTabIndex = if (selectedMode == AttendanceMode.DAILY) 0 else 1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                contentColor = MaterialTheme.colorScheme.primary
             ) {
-                CompactDropdown(
-                    label = "Academic Year",
-                    value = academicYear,
-                    items = academicYears,
-                    onItemSelected = { attendanceViewModel.setAcademicYear(it) },
-                    modifier = Modifier.weight(1f)
+                Tab(
+                    selected = selectedMode == AttendanceMode.DAILY,
+                    onClick = { attendanceViewModel.setSelectedMode(AttendanceMode.DAILY) },
+                    text = { Text("Daily Roll Call (နေ့စဉ်)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.Today, contentDescription = null, modifier = Modifier.size(16.dp)) }
                 )
-
-                CompactDateField(
-                    label = "Date",
-                    value = selectedDate,
-                    onValueChange = { attendanceViewModel.setSelectedDate(it) },
-                    modifier = Modifier.weight(1f)
+                Tab(
+                    selected = selectedMode == AttendanceMode.MONTHLY,
+                    onClick = { attendanceViewModel.setSelectedMode(AttendanceMode.MONTHLY) },
+                    text = { Text("Monthly Summary (လချုပ်)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp)) }
                 )
+            }
 
-                CompactDropdown(
-                    label = "Session",
-                    value = if (selectedSession == AttendanceSession.MORNING) "Morning" else "Evening",
-                    items = sessions,
-                    onItemSelected = { sessName ->
-                        val sess = if (sessName == "Morning") AttendanceSession.MORNING else AttendanceSession.EVENING
-                        attendanceViewModel.setSelectedSession(sess)
+            if (selectedMode == AttendanceMode.DAILY) {
+                // TOP SECTION: Dropdowns (Academic Year, Date, Session, Grade, Class)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CompactDropdown(
+                        label = "Academic Year",
+                        value = academicYear,
+                        items = academicYears,
+                        onItemSelected = { attendanceViewModel.setAcademicYear(it) },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    CompactDateField(
+                        label = "Date",
+                        value = selectedDate,
+                        onValueChange = { attendanceViewModel.setSelectedDate(it) },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    CompactDropdown(
+                        label = "Session",
+                        value = if (selectedSession == AttendanceSession.MORNING) "Morning" else "Evening",
+                        items = sessions,
+                        onItemSelected = { sessName ->
+                            val sess = if (sessName == "Morning") AttendanceSession.MORNING else AttendanceSession.EVENING
+                            attendanceViewModel.setSelectedSession(sess)
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CompactDropdown(
+                        label = "Grade",
+                        value = selectedGrade,
+                        items = grades,
+                        onItemSelected = { attendanceViewModel.setSelectedGrade(it) },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    CompactDropdown(
+                        label = "Class",
+                        value = selectedClass,
+                        items = classes,
+                        onItemSelected = { attendanceViewModel.setSelectedClass(it) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // SEARCH BAR
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { attendanceViewModel.setSearchQuery(it) },
+                    placeholder = { Text("Search by Student Name or Student ID...", fontSize = 12.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { attendanceViewModel.setSearchQuery("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                            }
+                        }
                     },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                CompactDropdown(
-                    label = "Grade",
-                    value = selectedGrade,
-                    items = grades,
-                    onItemSelected = { attendanceViewModel.setSelectedGrade(it) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
                 )
 
-                CompactDropdown(
-                    label = "Class",
-                    value = selectedClass,
-                    items = classes,
-                    onItemSelected = { attendanceViewModel.setSelectedClass(it) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            // SEARCH BAR
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { attendanceViewModel.setSearchQuery(it) },
-                placeholder = { Text("Search by Student Name or Student ID...", fontSize = 12.sp) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(18.dp)) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { attendanceViewModel.setSearchQuery("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(18.dp))
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(8.dp),
-                singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
-            )
-
-            // QUICK ACTIONS: Mark All Present, Mark All Absent, Reset
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Button(
-                    onClick = { attendanceViewModel.markAllPresent() },
-                    enabled = canEdit,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(34.dp)
+                // QUICK ACTIONS: Mark All Present, Mark All Absent, Reset
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("All Present", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                }
-
-                Button(
-                    onClick = { attendanceViewModel.markAllAbsent() },
-                    enabled = canEdit,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C)),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(34.dp)
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("All Absent", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                }
-
-                OutlinedButton(
-                    onClick = { attendanceViewModel.resetAttendance() },
-                    enabled = canEdit,
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                    modifier = Modifier
-                        .weight(0.8f)
-                        .height(34.dp)
-                ) {
-                    Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Reset", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                }
-            }
-
-            // ATTENDANCE LIST TABLE
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    // Header Row
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.fillMaxWidth()
+                    Button(
+                        onClick = { attendanceViewModel.markAllPresent() },
+                        enabled = canEdit,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(34.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Student ID", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.9f))
-                            Text("Student Name", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1.5f))
-                            Text("Attendance Status", fontWeight = FontWeight.Bold, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(3.4f))
-                        }
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("All Present", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Button(
+                        onClick = { attendanceViewModel.markAllAbsent() },
+                        enabled = canEdit,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C)),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(34.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("All Absent", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
 
-                    // Student Rows
-                    if (attendanceUiList.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            contentAlignment = Alignment.Center
+                    OutlinedButton(
+                        onClick = { attendanceViewModel.resetAttendance() },
+                        enabled = canEdit,
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .weight(0.8f)
+                            .height(34.dp)
+                    ) {
+                        Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Reset", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
+                }
+
+                // ATTENDANCE LIST TABLE
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Header Row
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = if (searchQuery.isNotBlank()) "No students match '$searchQuery'" else "No students in Grade $selectedGrade Class $selectedClass",
-                                color = Color.Gray,
-                                fontSize = 13.sp
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Student ID", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.9f))
+                                Text("Student Name", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1.5f))
+                                Text("Attendance Status", fontWeight = FontWeight.Bold, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(3.4f))
+                            }
                         }
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            items(attendanceUiList, key = { it.student.id }) { item ->
-                                StudentAttendanceRow(
-                                    uiItem = item,
-                                    canEdit = canEdit && !isLocked,
-                                    onStatusChanged = { newStatus ->
-                                        attendanceViewModel.updateStudentStatus(item.student.id, newStatus)
-                                    }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        // Student Rows
+                        if (attendanceUiList.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (searchQuery.isNotBlank()) "No students match '$searchQuery'" else "No students in Grade $selectedGrade Class $selectedClass",
+                                    color = Color.Gray,
+                                    fontSize = 13.sp
                                 )
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            }
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                items(attendanceUiList, key = { it.student.id }) { item ->
+                                    StudentAttendanceRow(
+                                        uiItem = item,
+                                        canEdit = canEdit && !isLocked,
+                                        onStatusChanged = { newStatus ->
+                                            attendanceViewModel.updateStudentStatus(item.student.id, newStatus)
+                                        }
+                                    )
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // MONTHLY SUMMARY MODE CONTENT
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CompactDropdown(
+                        label = "Academic Year",
+                        value = academicYear,
+                        items = academicYears,
+                        onItemSelected = { attendanceViewModel.setAcademicYear(it) },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    CompactDropdown(
+                        label = "Month",
+                        value = selectedMonth,
+                        items = attendanceViewModel.availableMonths,
+                        onItemSelected = { attendanceViewModel.setSelectedMonth(it) },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    CompactDropdown(
+                        label = "Grade",
+                        value = selectedGrade,
+                        items = grades,
+                        onItemSelected = { attendanceViewModel.setSelectedGrade(it) },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    CompactDropdown(
+                        label = "Class",
+                        value = selectedClass,
+                        items = classes,
+                        onItemSelected = { attendanceViewModel.setSelectedClass(it) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Configuration Row: School Days & Quick Action
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = if (monthlySchoolDays > 0) monthlySchoolDays.toString() else "",
+                        onValueChange = { str ->
+                            val v = str.filter { it.isDigit() }.toIntOrNull() ?: 0
+                            attendanceViewModel.setMonthlySchoolDays(v)
+                        },
+                        label = { Text("School Days (ရက်ပေါင်း)", fontSize = 11.sp) },
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .height(50.dp),
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                        keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                    )
+
+                    Button(
+                        onClick = {
+                            attendanceViewModel.markAllFullMonthly()
+                            snackbarMessage = "All students set to full attendance ($monthlySchoolDays days)"
+                        },
+                        enabled = canEdit,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .height(46.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("All Full Attendance", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
+
+                // SEARCH BAR
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { attendanceViewModel.setSearchQuery(it) },
+                    placeholder = { Text("Search by Student Name or Student ID...", fontSize = 12.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { attendanceViewModel.setSearchQuery("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
+                )
+
+                // MONTHLY ATTENDANCE TABLE
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Header Row
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Code", fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.weight(0.9f))
+                                Text("Student Name", fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.weight(1.5f))
+                                Text("Present (တက်)", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f), color = Color(0xFF15803D))
+                                Text("Absent (ပျက်)", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f), color = Color(0xFFB91C1C))
+                                Text("Leave (ခွင့်)", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f), color = Color(0xFF65558F))
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        if (monthlyUiList.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (searchQuery.isNotBlank()) "No students match '$searchQuery'" else "No students in Grade $selectedGrade Class $selectedClass",
+                                    color = Color.Gray,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                items(monthlyUiList, key = { it.studentId }) { item ->
+                                    MonthlyStudentAttendanceRow(
+                                        item = item,
+                                        schoolDays = monthlySchoolDays,
+                                        canEdit = canEdit,
+                                        onUpdate = { p, a, l ->
+                                            attendanceViewModel.updateMonthlyStudent(item.studentId, p, a, l)
+                                        }
+                                    )
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                }
                             }
                         }
                     }
@@ -715,6 +991,114 @@ private fun StatusOptionItem(
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthlyStudentAttendanceRow(
+    item: MonthlyStudentAttendanceInput,
+    schoolDays: Int,
+    canEdit: Boolean,
+    onUpdate: (Double, Double, Double) -> Unit
+) {
+    var presentText by remember(item.presentDays) {
+        val s = if (item.presentDays % 1.0 == 0.0) item.presentDays.toInt().toString() else item.presentDays.toString()
+        mutableStateOf(s)
+    }
+    var absentText by remember(item.absentDays) {
+        val s = if (item.absentDays % 1.0 == 0.0) item.absentDays.toInt().toString() else item.absentDays.toString()
+        mutableStateOf(s)
+    }
+    var leaveText by remember(item.leaveDays) {
+        val s = if (item.leaveDays % 1.0 == 0.0) item.leaveDays.toInt().toString() else item.leaveDays.toString()
+        mutableStateOf(s)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = item.studentCode.ifBlank { "ID: ${item.studentId}" },
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(0.9f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = item.studentName,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1.5f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        // Present Days
+        Box(modifier = Modifier.weight(1.0f).padding(horizontal = 2.dp)) {
+            OutlinedTextField(
+                value = presentText,
+                onValueChange = { str ->
+                    val clean = str.filter { it.isDigit() || it == '.' }
+                    presentText = clean
+                    val p = clean.toDoubleOrNull() ?: 0.0
+                    val l = leaveText.toDoubleOrNull() ?: 0.0
+                    val a = (schoolDays.toDouble() - p - l).coerceAtLeast(0.0)
+                    absentText = if (a % 1.0 == 0.0) a.toInt().toString() else a.toString()
+                    onUpdate(p, a, l)
+                },
+                enabled = canEdit,
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, color = Color(0xFF15803D)),
+                modifier = Modifier.height(44.dp).fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)
+            )
+        }
+
+        // Absent Days
+        Box(modifier = Modifier.weight(1.0f).padding(horizontal = 2.dp)) {
+            OutlinedTextField(
+                value = absentText,
+                onValueChange = { str ->
+                    val clean = str.filter { it.isDigit() || it == '.' }
+                    absentText = clean
+                    val a = clean.toDoubleOrNull() ?: 0.0
+                    val l = leaveText.toDoubleOrNull() ?: 0.0
+                    val p = (schoolDays.toDouble() - a - l).coerceAtLeast(0.0)
+                    presentText = if (p % 1.0 == 0.0) p.toInt().toString() else p.toString()
+                    onUpdate(p, a, l)
+                },
+                enabled = canEdit,
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, color = Color(0xFFB91C1C)),
+                modifier = Modifier.height(44.dp).fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)
+            )
+        }
+
+        // Leave Days
+        Box(modifier = Modifier.weight(1.0f).padding(horizontal = 2.dp)) {
+            OutlinedTextField(
+                value = leaveText,
+                onValueChange = { str ->
+                    val clean = str.filter { it.isDigit() || it == '.' }
+                    leaveText = clean
+                    val l = clean.toDoubleOrNull() ?: 0.0
+                    val a = absentText.toDoubleOrNull() ?: 0.0
+                    val p = (schoolDays.toDouble() - a - l).coerceAtLeast(0.0)
+                    presentText = if (p % 1.0 == 0.0) p.toInt().toString() else p.toString()
+                    onUpdate(p, a, l)
+                },
+                enabled = canEdit,
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, color = Color(0xFF65558F)),
+                modifier = Modifier.height(44.dp).fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)
             )
         }
     }

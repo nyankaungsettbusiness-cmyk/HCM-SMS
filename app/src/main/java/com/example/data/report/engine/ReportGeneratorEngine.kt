@@ -187,8 +187,24 @@ object ReportGeneratorEngine {
         val monthRecords = if (selectedMonth.isBlank() || selectedMonth.contains("All", ignoreCase = true)) {
             studentRecords
         } else {
+            val monthNum = when (selectedMonth.trim().lowercase()) {
+                "january", "jan" -> "01"
+                "february", "feb" -> "02"
+                "march", "mar" -> "03"
+                "april", "apr" -> "04"
+                "may" -> "05"
+                "june", "jun" -> "06"
+                "july", "jul" -> "07"
+                "august", "aug" -> "08"
+                "september", "sep" -> "09"
+                "october", "oct" -> "10"
+                "november", "nov" -> "11"
+                "december", "dec" -> "12"
+                else -> null
+            }
             studentRecords.filter { record ->
                 record.date.contains(selectedMonth, ignoreCase = true) ||
+                        (monthNum != null && (record.date.contains("-$monthNum-") || record.date.contains("-$monthNum"))) ||
                         record.academicYear.contains(selectedMonth, ignoreCase = true)
             }.ifEmpty { studentRecords }
         }

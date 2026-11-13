@@ -44,6 +44,12 @@ interface AttendanceDao {
     @Query("SELECT * FROM attendance_records WHERE academicYear = :academicYear AND grade = :grade AND className = :className")
     fun getAttendanceForClass(academicYear: String, grade: String, className: String): Flow<List<AttendanceRecordEntity>>
 
+    @Query("SELECT * FROM attendance_records WHERE academicYear = :academicYear AND grade = :grade AND className = :className AND date LIKE :datePrefix || '%'")
+    fun getAttendanceForClassMonth(academicYear: String, grade: String, className: String, datePrefix: String): Flow<List<AttendanceRecordEntity>>
+
+    @Query("DELETE FROM attendance_records WHERE academicYear = :academicYear AND grade = :grade AND className = :className AND date LIKE :datePrefix || '%'")
+    suspend fun deleteAttendanceForClassMonth(academicYear: String, grade: String, className: String, datePrefix: String)
+
     @Query("DELETE FROM attendance_records WHERE academicYear = :academicYear AND date = :date AND session = :session AND grade = :grade AND className = :className")
     suspend fun resetSessionAttendance(
         academicYear: String,

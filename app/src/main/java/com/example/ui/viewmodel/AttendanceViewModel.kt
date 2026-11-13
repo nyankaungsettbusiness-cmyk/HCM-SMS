@@ -12,6 +12,7 @@ import com.example.data.local.entity.UserEntity
 import com.example.data.local.entity.UserRole
 import com.example.data.repository.AcademicYearRepository
 import com.example.data.repository.AttendanceRepository
+import com.example.data.repository.MonthlyStudentAttendanceInput
 import com.example.data.repository.StudentAttendanceSummary
 import com.example.data.repository.StudentRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -59,6 +60,21 @@ class AttendanceViewModel(
 
     private val _selectedSession = MutableStateFlow(AttendanceSession.MORNING)
     val selectedSession: StateFlow<AttendanceSession> = _selectedSession.asStateFlow()
+
+    // Mode: Daily Roll Call vs Monthly Summary
+    private val _selectedMode = MutableStateFlow(AttendanceMode.DAILY)
+    val selectedMode: StateFlow<AttendanceMode> = _selectedMode.asStateFlow()
+
+    // Monthly Summary State
+    val availableMonths = listOf("June", "July", "August", "September", "October", "November", "December", "January", "February", "March", "April", "May")
+    private val _selectedMonth = MutableStateFlow("June")
+    val selectedMonth: StateFlow<String> = _selectedMonth.asStateFlow()
+
+    private val _monthlySchoolDays = MutableStateFlow(20)
+    val monthlySchoolDays: StateFlow<Int> = _monthlySchoolDays.asStateFlow()
+
+    private val _monthlyEdits = MutableStateFlow<Map<Long, MonthlyStudentAttendanceInput>>(emptyMap())
+    val monthlyEdits: StateFlow<Map<Long, MonthlyStudentAttendanceInput>> = _monthlyEdits.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -210,6 +226,79 @@ class AttendanceViewModel(
         initialValue = AttendanceSessionStats()
     )
 
+    // Monthly Records for selected Class & Month
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val monthlyRecordsForClass: StateFlow<List<AttendanceRecordEntity>> = combine(
+        _academicYear,
+        _selectedGrade,
+        _selectedClass,
+        _selectedMonth
+    ) { yr, gr, cl, mo ->
+        val prefix = AttendanceRepository.getYearMonthPrefix(yr, mo)
+        attendanceRepository.getAttendanceForClassMonth(yr, gr, cl, prefix)
+    }.flatMapLatest { it }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    // Combined UI list for Monthly Summary
+    val monthlyUiList: StateFlow<List<MonthlyStudentAttendanceInput>> = combine(
+        studentsInClass,
+        monthlyRecordsForClass,
+        _monthlyEdits,
+        _monthlySchoolDays,
+        _searchQuery
+    ) { students, records, edits, schoolDays, query ->
+        val recordsByStudent = records.groupBy { it.studentId }
+        val dSchoolDays = schoolDays.toDouble()
+
+        students.filter { student ->
+            if (query.isBlank()) true
+            else student.name.contains(query, ignoreCase = true) ||
+                    student.studentCode.contains(query, ignoreCase = true) ||
+                    student.rollNumber.toString().contains(query)
+        }.map { student ->
+            val edited = edits[student.id]
+            if (edited != null) {
+                edited
+            } else {
+                val studentRecs = recordsByStudent[student.id]
+                if (!studentRecs.isNullOrEmpty()) {
+                    val pCount = studentRecs.count { it.status == AttendanceStatus.PRESENT }
+                    val lCount = studentRecs.count { it.status == AttendanceStatus.LEAVE }
+                    val pDays = (pCount / 2.0).coerceAtMost(dSchoolDays)
+                    val lDays = (lCount / 2.0).coerceAtMost(dSchoolDays)
+                    val aDays = (dSchoolDays - pDays - lDays).coerceAtLeast(0.0)
+
+                    MonthlyStudentAttendanceInput(
+                        studentId = student.id,
+                        studentCode = student.studentCode,
+                        studentName = student.name,
+                        totalDays = dSchoolDays,
+                        presentDays = pDays,
+                        absentDays = aDays,
+                        leaveDays = lDays
+                    )
+                } else {
+                    MonthlyStudentAttendanceInput(
+                        studentId = student.id,
+                        studentCode = student.studentCode,
+                        studentName = student.name,
+                        totalDays = dSchoolDays,
+                        presentDays = dSchoolDays,
+                        absentDays = 0.0,
+                        leaveDays = 0.0
+                    )
+                }
+            }
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
     // Student summary history
     val selectedStudentHistorySummary: StateFlow<StudentAttendanceSummary?> = combine(
         _selectedHistoryStudent,
@@ -335,6 +424,98 @@ class AttendanceViewModel(
         _selectedHistoryStudent.value = student
     }
 
+    fun setSelectedMode(mode: AttendanceMode) {
+        _selectedMode.value = mode
+        _statusMessage.value = null
+    }
+
+    fun setSelectedMonth(month: String) {
+        _selectedMonth.value = month
+        _monthlyEdits.value = emptyMap()
+    }
+
+    fun setMonthlySchoolDays(days: Int) {
+        val safeDays = days.coerceAtLeast(1)
+        _monthlySchoolDays.value = safeDays
+        val currentEdits = _monthlyEdits.value.toMutableMap()
+        for ((sId, input) in currentEdits) {
+            val newPresent = input.presentDays.coerceAtMost(safeDays.toDouble())
+            val newLeave = input.leaveDays.coerceAtMost((safeDays.toDouble() - newPresent).coerceAtLeast(0.0))
+            val newAbsent = (safeDays.toDouble() - newPresent - newLeave).coerceAtLeast(0.0)
+            currentEdits[sId] = input.copy(
+                totalDays = safeDays.toDouble(),
+                presentDays = newPresent,
+                leaveDays = newLeave,
+                absentDays = newAbsent
+            )
+        }
+        _monthlyEdits.value = currentEdits
+    }
+
+    fun updateMonthlyStudent(studentId: Long, present: Double, absent: Double, leave: Double) {
+        val student = studentsInClass.value.find { it.id == studentId } ?: return
+        val currentEdits = _monthlyEdits.value.toMutableMap()
+        currentEdits[studentId] = MonthlyStudentAttendanceInput(
+            studentId = studentId,
+            studentCode = student.studentCode,
+            studentName = student.name,
+            totalDays = _monthlySchoolDays.value.toDouble(),
+            presentDays = present,
+            absentDays = absent,
+            leaveDays = leave
+        )
+        _monthlyEdits.value = currentEdits
+    }
+
+    fun markAllFullMonthly() {
+        val students = studentsInClass.value
+        val schoolDays = _monthlySchoolDays.value.toDouble()
+        val edits = students.associate { student ->
+            student.id to MonthlyStudentAttendanceInput(
+                studentId = student.id,
+                studentCode = student.studentCode,
+                studentName = student.name,
+                totalDays = schoolDays,
+                presentDays = schoolDays,
+                absentDays = 0.0,
+                leaveDays = 0.0
+            )
+        }
+        _monthlyEdits.value = edits
+        _statusMessage.value = "Set all ${students.size} students to full attendance ($schoolDays days)"
+    }
+
+    fun saveMonthlyAttendance(recordedBy: String) {
+        val inputs = monthlyUiList.value
+        if (inputs.isEmpty()) {
+            _statusMessage.value = "No students in selected class to save monthly attendance."
+            return
+        }
+
+        viewModelScope.launch {
+            _isSaving.value = true
+            val yr = _academicYear.value
+            val gr = _selectedGrade.value
+            val cl = _selectedClass.value
+            val mo = _selectedMonth.value
+            val days = _monthlySchoolDays.value
+
+            attendanceRepository.saveMonthlyAttendanceSummary(
+                academicYear = yr,
+                grade = gr,
+                className = cl,
+                monthName = mo,
+                schoolDays = days,
+                inputs = inputs,
+                recordedBy = recordedBy.ifEmpty { "Teacher" }
+            )
+
+            _monthlyEdits.value = emptyMap()
+            _isSaving.value = false
+            _statusMessage.value = "Successfully saved monthly attendance for $gr-$cl ($mo) for ${inputs.size} students!"
+        }
+    }
+
     fun clearStatusMessage() {
         _statusMessage.value = null
     }
@@ -346,6 +527,11 @@ class AttendanceViewModel(
                 currentUser.role == UserRole.ADMIN ||
                 currentUser.role == UserRole.TEACHER
     }
+}
+
+enum class AttendanceMode(val displayName: String) {
+    DAILY("Daily Roll Call"),
+    MONTHLY("Monthly Summary")
 }
 
 data class AttendanceSessionStats(
