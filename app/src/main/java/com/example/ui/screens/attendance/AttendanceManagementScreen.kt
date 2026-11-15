@@ -374,27 +374,120 @@ fun AttendanceManagementScreen(
                 }
             }
 
-            // TAB SELECTOR: Daily Roll Call vs Monthly Summary
-            TabRow(
-                selectedTabIndex = if (selectedMode == AttendanceMode.DAILY) 0 else 1,
+            // MODE SELECTOR: Modern Button Cards (Daily Roll Call vs Monthly Summary)
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp),
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                contentColor = MaterialTheme.colorScheme.primary
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Tab(
-                    selected = selectedMode == AttendanceMode.DAILY,
+                // Daily Roll Call Button Card
+                Surface(
                     onClick = { attendanceViewModel.setSelectedMode(AttendanceMode.DAILY) },
-                    text = { Text("Daily Roll Call (နေ့စဉ်)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
-                    icon = { Icon(Icons.Default.Today, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                )
-                Tab(
-                    selected = selectedMode == AttendanceMode.MONTHLY,
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (selectedMode == AttendanceMode.DAILY) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    },
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (selectedMode == AttendanceMode.DAILY) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                        }
+                    ),
+                    shadowElevation = if (selectedMode == AttendanceMode.DAILY) 2.dp else 0.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Today,
+                            contentDescription = null,
+                            tint = if (selectedMode == AttendanceMode.DAILY) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Daily Roll Call",
+                            fontSize = 12.sp,
+                            fontWeight = if (selectedMode == AttendanceMode.DAILY) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selectedMode == AttendanceMode.DAILY) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Monthly Summary Button Card
+                Surface(
                     onClick = { attendanceViewModel.setSelectedMode(AttendanceMode.MONTHLY) },
-                    text = { Text("Monthly Summary (လချုပ်)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
-                    icon = { Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                )
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (selectedMode == AttendanceMode.MONTHLY) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    },
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (selectedMode == AttendanceMode.MONTHLY) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                        }
+                    ),
+                    shadowElevation = if (selectedMode == AttendanceMode.MONTHLY) 2.dp else 0.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DateRange,
+                            contentDescription = null,
+                            tint = if (selectedMode == AttendanceMode.MONTHLY) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Monthly Summary",
+                            fontSize = 12.sp,
+                            fontWeight = if (selectedMode == AttendanceMode.MONTHLY) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selectedMode == AttendanceMode.MONTHLY) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1
+                        )
+                    }
+                }
             }
 
             if (selectedMode == AttendanceMode.DAILY) {
@@ -653,7 +746,7 @@ fun AttendanceManagementScreen(
                             )
                         }
                         Text(
-                            text = "ရက်",
+                            text = "Days",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -724,9 +817,9 @@ fun AttendanceManagementScreen(
                             ) {
                                 Text("Code", fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.weight(0.9f))
                                 Text("Student Name", fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.weight(1.5f))
-                                Text("Present (တက်)", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f), color = Color(0xFF15803D))
-                                Text("Absent (ပျက်)", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f), color = Color(0xFFB91C1C))
-                                Text("Leave (ခွင့်)", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f), color = Color(0xFF65558F))
+                                Text("Present", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f), color = Color(0xFF15803D))
+                                Text("Absent", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f), color = Color(0xFFB91C1C))
+                                Text("Leave", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f), color = Color(0xFF65558F))
                             }
                         }
 

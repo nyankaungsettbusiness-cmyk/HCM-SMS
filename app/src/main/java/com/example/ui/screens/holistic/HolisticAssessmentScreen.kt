@@ -108,7 +108,7 @@ fun HolisticAssessmentScreen(
 
     val academicYears = if (availableAcademicYears.isNotEmpty()) (availableAcademicYears + selectedAcademicYear).filter { it.isNotBlank() }.distinct() else listOf(selectedAcademicYear).filter { it.isNotBlank() }
     val grades = if (dbGrades.isNotEmpty()) dbGrades.map { it.gradeName } else SchoolPolicy.VALID_GRADES
-    val classes = if (dbClasses.isNotEmpty()) dbClasses.map { it.className }.distinct() else listOf("A", "B", "C", "D")
+    val classes = listOf("All") + (if (dbClasses.isNotEmpty()) dbClasses.map { it.className }.distinct().filter { it.isNotBlank() && it != "All" } else listOf("A", "B", "C", "D"))
 
     // Categories to display for HCM rating entry
     val displayCategories = if (enabledHolisticCategories.isNotEmpty()) {
@@ -267,8 +267,9 @@ fun HolisticAssessmentScreen(
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
+                                val classDisplay = if (selectedClass == "All") "All Classes" else "Class $selectedClass"
                                 Text(
-                                    text = "Select a student from Grade $selectedGrade $selectedClass to enter HCM assessment ratings:",
+                                    text = "Select a student from Grade $selectedGrade ($classDisplay) to enter HCM assessment ratings:",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -283,8 +284,9 @@ fun HolisticAssessmentScreen(
                                     .weight(1f),
                                 contentAlignment = Alignment.Center
                             ) {
+                                val classDisplay = if (selectedClass == "All") "All Classes" else "Class $selectedClass"
                                 Text(
-                                    text = if (searchQuery.isNotBlank()) "No students match '$searchQuery'" else "No students found in Grade $selectedGrade Class $selectedClass",
+                                    text = if (searchQuery.isNotBlank()) "No students match '$searchQuery'" else "No students found in Grade $selectedGrade ($classDisplay)",
                                     color = Color.Gray,
                                     fontSize = 13.sp
                                 )

@@ -28,7 +28,7 @@ class HolisticViewModel(
     }
 
     val selectedGrade = MutableStateFlow("G5")
-    val selectedClass = MutableStateFlow("A")
+    val selectedClass = MutableStateFlow("All")
     val selectedPeriod = MutableStateFlow("June")
     val searchQuery = MutableStateFlow("")
     val selectedStudent = MutableStateFlow<StudentEntity?>(null)
@@ -211,8 +211,14 @@ class HolisticViewModel(
                 }
             }
         }.filter { student ->
-            val matchGrade = (params.grade == "All" || student.gradeName.equals(params.grade, ignoreCase = true))
-            val matchClass = (params.className == "All" || student.className.equals(params.className, ignoreCase = true))
+            val normGrade = student.gradeName.trim()
+            val matchGrade = (params.grade == "All" || normGrade.equals(params.grade.trim(), ignoreCase = true) ||
+                    (params.grade.trim().equals("KG", ignoreCase = true) && (normGrade.contains("KG", ignoreCase = true) || normGrade.contains("Kindergarten", ignoreCase = true))))
+
+            val matchClass = (params.className == "All" || params.className == "All Classes" || params.className.isBlank() ||
+                    student.className.equals(params.className, ignoreCase = true) ||
+                    (params.className == "A" && (student.className.isBlank() || student.className.equals("None", ignoreCase = true) || student.className == "-")))
+
             val matchQuery = params.query.isBlank() ||
                     student.name.contains(params.query, ignoreCase = true) ||
                     student.studentCode.contains(params.query, ignoreCase = true) ||
