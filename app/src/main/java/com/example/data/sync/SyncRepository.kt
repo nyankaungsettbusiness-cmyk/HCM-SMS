@@ -2631,9 +2631,7 @@ class SyncRepository(
 
         // Auto-purge any legacy zombie/default rows from local SQLite
         try {
-            appDatabase.openHelper.writableDatabase.execSQL(
-                "DELETE FROM holistic_categories WHERE isDefault = 1 OR id < 763 OR id IN (784, 785, 787, 788, 796) OR categoryName = ''"
-            )
+            dao.purgeLegacyCategories()
         } catch (e: Exception) {
             // Safe ignore
         }

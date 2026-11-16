@@ -46,6 +46,9 @@ interface HolisticDao {
     @Query("DELETE FROM holistic_categories WHERE educationLevel = :targetLevel")
     suspend fun deleteHolisticCategoriesForLevel(targetLevel: String)
 
+    @Query("DELETE FROM holistic_categories WHERE isDefault = 1 OR id < 763 OR id IN (784, 785, 787, 788, 796) OR categoryName = ''")
+    suspend fun purgeLegacyCategories()
+
     // Holistic Results
     @Query("SELECT * FROM holistic_results WHERE studentId = :studentId AND assessmentPeriod = :period AND academicYear = :academicYear")
     fun getHolisticResultsForStudent(studentId: Long, period: String, academicYear: String): Flow<List<HolisticResultEntity>>
