@@ -1049,54 +1049,65 @@ data class HolisticCategorySupabaseDto(
         val resolvedName = categoryName.ifBlank { name }.ifBlank { code }
 
         val extractedLevel = when {
-            // Known 15 KG categories created for KG (IDs 763 to 777)
-            id != null && id in 763L..777L -> "KINDERGARTEN"
-            code.contains("KINDERGARTEN", ignoreCase = true) || code.contains("[KG]", ignoreCase = true) -> "KINDERGARTEN"
-            description.contains("[KINDERGARTEN]", ignoreCase = true) || description.contains("[KG]", ignoreCase = true) -> "KINDERGARTEN"
-            code.contains("SECONDARY", ignoreCase = true) || description.contains("[SECONDARY]", ignoreCase = true) -> "SECONDARY"
-            code.contains("HIGH_SCHOOL", ignoreCase = true) || description.contains("[HIGH_SCHOOL]", ignoreCase = true) -> "HIGH_SCHOOL"
-            resolvedName.contains("အမှားဝန်ခံခြင်း (ပျက်စီးမှု") ||
-                    resolvedName.contains("ပိုင်ဆိုင်မှုခွဲခြားသိမြင်ခြင်း") ||
-                    resolvedName.contains("စည်းကမ်းစောင့်ထိန်းခြင်း") ||
-                    resolvedName.contains("ခံစားချက်ကို မှန်ကန်စွာဖော်ထုတ်ခြင်း") ||
-                    resolvedName.contains("မိမိလုပ်ဆောင်မှုကို ရိုးသားစွာပြောပြခြင်း") ||
-                    resolvedName.contains("စိတ်ဝင်တစားမေးခွန်းထုတ်ခြင်း") ||
-                    resolvedName.contains("အသစ်အဆန်းကိုစမ်းသပ်လိုစိတ်") ||
-                    resolvedName.contains("အဖြေရှာရန်ကြိုးစားအားထုတ်ခြင်း") ||
-                    resolvedName.contains("အာရုံစိုက်နားထောင်မှတ်ယူခြင်း") ||
-                    resolvedName.contains("တီထွင်ဖန်တီးခြင်း (အရုပ်ဆက်") ||
-                    resolvedName.contains("မိမိအလှည့်ကို စိတ်ရှည်စွာစောင့်ဆိုင်းခြင်း") ||
-                    resolvedName.contains("ငြိမ်သက်ခြင်း (တရားထိုင်ခြင်း") ||
-                    resolvedName.contains("ပစ္စည်းသိမ်းဆည်မှု သတိ") ||
-                    resolvedName.contains("သူတပါးခံစားချက်ကိုသတိပြုမိခြင်း") ||
-                    resolvedName.contains("ခန္ဓာကိုယ်လှုပ်ရှားမှု သတိရှိခြင်း") -> "KINDERGARTEN"
+            description.contains("[KINDERGARTEN]", ignoreCase = true) || description.contains("[KG]", ignoreCase = true) || code.contains("KINDERGARTEN", ignoreCase = true) || (id != null && id in 763L..777L) -> "KINDERGARTEN"
+            description.contains("[SECONDARY]", ignoreCase = true) || code.contains("SECONDARY", ignoreCase = true) || (id != null && id in 810L..824L) -> "SECONDARY"
+            description.contains("[HIGH_SCHOOL]", ignoreCase = true) || code.contains("HIGH_SCHOOL", ignoreCase = true) || (id != null && (id in 794L..809L || id == 840L)) -> "HIGH_SCHOOL"
+            description.contains("[PRIMARY]", ignoreCase = true) || code.contains("PRIMARY", ignoreCase = true) || (id != null && id in 825L..839L) -> "PRIMARY"
+            resolvedName.contains("အမှားဝန်ခံ") ||
+                    resolvedName.contains("ပိုင်ဆိုင်မှု") ||
+                    resolvedName.contains("ကစားနည်းစည်းကမ်း") ||
+                    resolvedName.contains("ခံစားချက်ကို မှန်ကန်စွာ") ||
+                    resolvedName.contains("မိမိလုပ်ဆောင်မှု") ||
+                    resolvedName.contains("အသစ်အဆန်းကိုစမ်းသပ်") ||
+                    resolvedName.contains("အရုပ်ဆက်") ||
+                    resolvedName.contains("တရားထိုင်ခြင်း") ||
+                    resolvedName.contains("ပစ္စည်းသိမ်းဆည်မှု") ||
+                    resolvedName.contains("သူတပါးခံစားချက်ကိုသတိပြု") ||
+                    resolvedName.contains("ခန္ဓာကိုယ်လှုပ်ရှားမှု") -> "KINDERGARTEN"
+            resolvedName.contains("ခိုးချခြင်း") ||
+                    resolvedName.contains("ဆယ်ကျော်သက် စိတ်ကစားမှု") ||
+                    resolvedName.contains("သမီးရည်းစား") ||
+                    resolvedName.contains("ကျောင်းချိန်ပြင်ပတွင် ဖုန်း") ||
+                    resolvedName.contains("ရေရှည်ဘဝရည်မှန်းချက်") -> "HIGH_SCHOOL"
+            resolvedName.contains("ကျောင်းယူနီဖောင်း") ||
+                    resolvedName.contains("ကောလာဟလ") ||
+                    resolvedName.contains("နာမည်ပြောင်ခေါ်ခြင်း") ||
+                    resolvedName.contains("Body Shaming") ||
+                    resolvedName.contains("အလွတ်ကျက်မှတ်ခြင်းထက်") -> "SECONDARY"
             else -> "PRIMARY"
         }
 
         val cleanDescription = description.replace(Regex("^\\[(KINDERGARTEN|PRIMARY|SECONDARY|HIGH_SCHOOL|KG)\\]\\s*"), "").trim()
         val rawPillar = (pillar?.takeIf { it.isNotBlank() } ?: domain).trim().uppercase()
         val resolvedPillar = when {
+            rawPillar == "HONESTY" || rawPillar == "H" || rawPillar.contains("HONEST") -> "HONESTY"
+            rawPillar == "CURIOSITY" || rawPillar == "C" || rawPillar.contains("CURIOUS") -> "CURIOSITY"
+            rawPillar == "MINDFULNESS" || rawPillar == "M" || rawPillar.contains("MINDFUL") -> "MINDFULNESS"
             resolvedName.contains("အမှားဝန်ခံ") ||
                     resolvedName.contains("ပိုင်ဆိုင်မှု") ||
                     resolvedName.contains("စည်းကမ်းစောင့်ထိန်း") ||
                     resolvedName.contains("ခံစားချက်ကို မှန်ကန်စွာ") ||
-                    resolvedName.contains("မိမိလုပ်ဆောင်မှု") -> "HONESTY"
+                    resolvedName.contains("မိမိလုပ်ဆောင်မှု") ||
+                    resolvedName.contains("ခိုးချခြင်း") ||
+                    resolvedName.contains("လိမ်ညာခြင်းမပြု") ||
+                    resolvedName.contains("ရိုးသားစွာ") -> "HONESTY"
 
             resolvedName.contains("စိတ်ဝင်တစား") ||
                     resolvedName.contains("အသစ်အဆန်း") ||
                     resolvedName.contains("အဖြေရှာရန်") ||
                     resolvedName.contains("အာရုံစိုက်") ||
-                    resolvedName.contains("တီထွင်ဖန်တီး") -> "CURIOSITY"
+                    resolvedName.contains("တီထွင်ဖန်တီး") ||
+                    resolvedName.contains("မေးခွန်းထုတ်") ||
+                    resolvedName.contains("ရှာဖွေဖတ်ရှု") -> "CURIOSITY"
 
             resolvedName.contains("စိတ်ရှည်စွာ") ||
                     resolvedName.contains("ငြိမ်သက်ခြင်း") ||
                     resolvedName.contains("ပစ္စည်းသိမ်း") ||
                     resolvedName.contains("သူတပါးခံစားချက်") ||
-                    resolvedName.contains("ခန္ဓာကိုယ်လှုပ်ရှားမှု") -> "MINDFULNESS"
+                    resolvedName.contains("ခန္ဓာကိုယ်လှုပ်ရှားမှု") ||
+                    resolvedName.contains("ယဉ်ကျေးသိမ်မွေ့") ||
+                    resolvedName.contains("ဖေးမကူညီ") -> "MINDFULNESS"
 
-            rawPillar == "H" || rawPillar.contains("HONEST") -> "HONESTY"
-            rawPillar == "C" || rawPillar.contains("CURIOUS") -> "CURIOSITY"
-            rawPillar == "M" || rawPillar.contains("MINDFUL") -> "MINDFULNESS"
             else -> "HONESTY"
         }
 
@@ -1108,7 +1119,7 @@ data class HolisticCategorySupabaseDto(
             educationLevel = extractedLevel,
             maxStars = maxStars,
             isEnabled = isEnabled,
-            isDefault = isDefault,
+            isDefault = false,
             orderIndex = orderIndex,
             uuid = uuid.ifBlank { UUID.randomUUID().toString() },
             updatedAt = if (parsedUpdatedAt > 0) parsedUpdatedAt else System.currentTimeMillis(),

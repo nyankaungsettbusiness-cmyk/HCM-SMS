@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface HolisticDao {
     // Holistic Categories
-    @Query("SELECT * FROM holistic_categories ORDER BY orderIndex ASC, id ASC")
+    @Query("SELECT * FROM holistic_categories WHERE isDeleted = 0 ORDER BY orderIndex ASC, id ASC")
     fun getAllHolisticCategories(): Flow<List<HolisticCategoryEntity>>
 
     @Query("SELECT * FROM holistic_categories WHERE isDirty = 1")
@@ -19,16 +19,16 @@ interface HolisticDao {
     @Query("UPDATE holistic_categories SET isDirty = 0, uuid = :uuid WHERE id = :id")
     suspend fun markHolisticCategorySynced(id: Long, uuid: String)
 
-    @Query("SELECT * FROM holistic_categories WHERE isEnabled = 1 ORDER BY orderIndex ASC, id ASC")
+    @Query("SELECT * FROM holistic_categories WHERE isEnabled = 1 AND isDeleted = 0 ORDER BY orderIndex ASC, id ASC")
     fun getEnabledHolisticCategories(): Flow<List<HolisticCategoryEntity>>
 
-    @Query("SELECT * FROM holistic_categories WHERE educationLevel = :educationLevel ORDER BY orderIndex ASC, id ASC")
+    @Query("SELECT * FROM holistic_categories WHERE educationLevel = :educationLevel AND isDeleted = 0 ORDER BY orderIndex ASC, id ASC")
     fun getHolisticCategoriesForLevel(educationLevel: String): Flow<List<HolisticCategoryEntity>>
 
-    @Query("SELECT * FROM holistic_categories WHERE educationLevel = :educationLevel AND isEnabled = 1 ORDER BY orderIndex ASC, id ASC")
+    @Query("SELECT * FROM holistic_categories WHERE educationLevel = :educationLevel AND isEnabled = 1 AND isDeleted = 0 ORDER BY orderIndex ASC, id ASC")
     fun getEnabledHolisticCategoriesForLevel(educationLevel: String): Flow<List<HolisticCategoryEntity>>
 
-    @Query("SELECT * FROM holistic_categories WHERE educationLevel = :educationLevel")
+    @Query("SELECT * FROM holistic_categories WHERE educationLevel = :educationLevel AND isDeleted = 0")
     suspend fun getHolisticCategoriesForLevelList(educationLevel: String): List<HolisticCategoryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

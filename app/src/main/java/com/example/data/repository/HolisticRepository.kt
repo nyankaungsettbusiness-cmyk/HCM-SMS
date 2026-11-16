@@ -68,7 +68,12 @@ class HolisticRepository(
     }
 
     suspend fun deleteHolisticCategory(category: HolisticCategoryEntity) {
-        holisticDao.deleteHolisticCategory(category)
+        val softDeleted = category.copy(
+            isDeleted = true,
+            isDirty = true,
+            updatedAt = System.currentTimeMillis()
+        )
+        holisticDao.updateHolisticCategory(softDeleted)
         triggerBackgroundSync()
     }
 

@@ -2629,21 +2629,33 @@ class SyncRepository(
         val dao = holisticDao ?: return Pair(0, 0)
         var pushed = 0; var pulled = 0
 
+        // Auto-purge any legacy zombie/default rows from local SQLite
+        try {
+            appDatabase.openHelper.writableDatabase.execSQL(
+                "DELETE FROM holistic_categories WHERE isDefault = 1 OR id < 763 OR id IN (784, 785, 787, 788, 796) OR categoryName = ''"
+            )
+        } catch (e: Exception) {
+            // Safe ignore
+        }
+
         val remoteList = try {
             client.from("holistic_categories").select().decodeList<HolisticCategorySupabaseDto>()
+                .filter {
+                    !it.isDefault &&
+                    it.categoryName.isNotBlank() &&
+                    (it.id == null || (it.id >= 763L && it.id !in listOf(784L, 785L, 787L, 788L, 796L)))
+                }
         } catch (e: Exception) {
             emptyList()
         }
         val remoteByUuid = remoteList.associateBy { it.uuid }
-        val remoteByName = remoteList.filter { it.categoryName.isNotBlank() || it.name.isNotBlank() }
-            .associateBy { it.categoryName.ifBlank { it.name } }
 
         val unsynced = dao.getHolisticCategoriesForSync()
         for (item in unsynced) {
             try {
                 val assignedUuid = item.uuid.ifBlank { UUID.randomUUID().toString() }
                 val updated = if (item.uuid.isBlank()) item.copy(uuid = assignedUuid) else item
-                val existingRemote = remoteByUuid[assignedUuid] ?: remoteByName[updated.categoryName]
+                val existingRemote = remoteByUuid[assignedUuid]
 
                 val targetUuid = existingRemote?.uuid ?: assignedUuid
                 val baseDto = HolisticCategorySupabaseDto.fromEntity(updated)
@@ -2662,6 +2674,13 @@ class SyncRepository(
 
         try {
             for (remoteDto in remoteList) {
+                if (remoteDto.isDeleted) {
+                    val existing = if (remoteDto.uuid.isNotBlank()) dao.getHolisticCategoryByUuid(remoteDto.uuid) else null
+                    if (existing != null) {
+                        dao.deleteHolisticCategory(existing)
+                    }
+                    continue
+                }
                 val existingLocal = if (remoteDto.uuid.isNotBlank()) dao.getHolisticCategoryByUuid(remoteDto.uuid) else null
                 if (existingLocal != null) {
                     val remoteEntity = remoteDto.toEntity(existingLocalId = existingLocal.id)

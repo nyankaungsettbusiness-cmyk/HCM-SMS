@@ -420,6 +420,13 @@ abstract class AppDatabase : RoomDatabase() {
                         android.util.Log.e("AppDatabase", "Error auto-healing G1 Myanmar marks: ${e.message}")
                     }
 
+                    // 5. Clean up any zombie/default holistic categories from local SQLite
+                    try {
+                        db.execSQL("DELETE FROM holistic_categories WHERE isDefault = 1 OR id < 763 OR id IN (784, 785, 787, 788, 796) OR categoryName = ''")
+                    } catch (e: Exception) {
+                        android.util.Log.e("AppDatabase", "Error cleaning legacy holistic categories: ${e.message}")
+                    }
+
                     val policyDao = database.schoolPolicyDao()
                     if (policyDao.getSchoolSettings() == null) {
                         populateInitialData(database)
@@ -639,104 +646,8 @@ abstract class AppDatabase : RoomDatabase() {
             )
             gradingPolicies.forEach { policyDao.insertGradingPolicy(it) }
 
-            // 10. Default HCM Core Value Items per Education Level
+            // 10. Holistic categories are managed exclusively via user entry or cloud sync (No auto default seed)
             val holisticDao = db.holisticDao()
-
-            val defaultHcmItems = mutableListOf<HolisticCategoryEntity>()
-            var orderCounter = 1
-
-            // Kindergarten items (5 items: KG)
-            val kgItems = listOf(
-                Triple("မိမိကိုယ်ကို ယုံကြည်မှုရှိခြင်း", "Self-confidence and self-reliance in daily activities", "HONESTY"),
-                Triple("စည်းကမ်းလိုက်နာခြင်း", "Adherence to classroom rules and teacher guidance", "HONESTY"),
-                Triple("သူငယ်ချင်းများနှင့် ပူးပေါင်းဆောင်ရွက်ခြင်း", "Peer cooperation and friendly interaction", "MINDFULNESS"),
-                Triple("ဆရာ/ဆရာမ၏ ညွှန်ကြားချက်ကို လိုက်နာခြင်း", "Following instructions attentiveness", "HONESTY"),
-                Triple("အခြေခံတစ်ကိုယ်ရေသန့်ရှင်းရေးကို ထိန်းသိမ်းခြင်း", "Basic personal hygiene and cleanliness habits", "MINDFULNESS")
-            )
-            kgItems.forEach { (title, desc, pillar) ->
-                defaultHcmItems.add(
-                    HolisticCategoryEntity(
-                        categoryName = title,
-                        description = desc,
-                        pillar = pillar,
-                        educationLevel = "KINDERGARTEN",
-                        maxStars = 5,
-                        isEnabled = true,
-                        isDefault = true,
-                        orderIndex = orderCounter++
-                    )
-                )
-            }
-
-            // Primary items (5 items: G1-G5)
-            val primaryItems = listOf(
-                Triple("တာဝန်ယူမှုရှိခြင်း", "Personal responsibility and duty fulfillment", "HONESTY"),
-                Triple("သင်ယူမှုတွင် စိတ်ပါဝင်စားခြင်း", "Enthusiasm and active engagement in learning", "CURIOSITY"),
-                Triple("အဖွဲ့လိုက်လုပ်ဆောင်နိုင်ခြင်း", "Teamwork and active group participation", "MINDFULNESS"),
-                Triple("အချိန်ကို တန်ဖိုးထားအသုံးပြုခြင်း", "Punctuality and efficient time management", "HONESTY"),
-                Triple("ရိုသေလေးစားမှုနှင့် ယဉ်ကျေးပျူငှာမှုရှိခြင်း", "Respect towards elders and polite social etiquette", "MINDFULNESS")
-            )
-            primaryItems.forEach { (title, desc, pillar) ->
-                defaultHcmItems.add(
-                    HolisticCategoryEntity(
-                        categoryName = title,
-                        description = desc,
-                        pillar = pillar,
-                        educationLevel = "PRIMARY",
-                        maxStars = 5,
-                        isEnabled = true,
-                        isDefault = true,
-                        orderIndex = orderCounter++
-                    )
-                )
-            }
-
-            // Secondary items (5 items: G6-G9)
-            val secondaryItems = listOf(
-                Triple("မိမိကိုယ်ကို စီမံခန့်ခွဲနိုင်ခြင်း", "Self-management and emotional regulation", "MINDFULNESS"),
-                Triple("ဝေဖန်စဉ်းစားနိုင်ခြင်း", "Critical thinking and logical analysis", "CURIOSITY"),
-                Triple("ခေါင်းဆောင်မှုစွမ်းရည်", "Leadership skills and positive initiative", "HONESTY"),
-                Triple("လူမှုဆက်ဆံရေးကောင်းမွန်ခြင်း", "Effective communication and interpersonal relationship", "MINDFULNESS"),
-                Triple("ပြဿနာဖြေရှင်းနိုင်စွမ်းရှိခြင်း", "Problem solving capability and resilience", "CURIOSITY")
-            )
-            secondaryItems.forEach { (title, desc, pillar) ->
-                defaultHcmItems.add(
-                    HolisticCategoryEntity(
-                        categoryName = title,
-                        description = desc,
-                        pillar = pillar,
-                        educationLevel = "SECONDARY",
-                        maxStars = 5,
-                        isEnabled = true,
-                        isDefault = true,
-                        orderIndex = orderCounter++
-                    )
-                )
-            }
-
-            // High School items (5 items: G10-G12)
-            val highSchoolItems = listOf(
-                Triple("စည်းကမ်းနှင့် တာဝန်ယူမှု", "High integrity, discipline, and ethical responsibility", "HONESTY"),
-                Triple("မိမိရည်မှန်းချက်အတွက် ကြိုးစားအားထုတ်မှု", "Goal-oriented effort and academic dedication", "CURIOSITY"),
-                Triple("ခေါင်းဆောင်မှုနှင့် ပူးပေါင်းဆောင်ရွက်မှု", "Advanced leadership and strategic collaboration", "MINDFULNESS"),
-                Triple("ကိုယ်ပိုင်ဆုံးဖြတ်ချက်ချနိုင်မှု", "Independent decision-making and maturity", "CURIOSITY"),
-                Triple("လူ့ကျင့်ဝတ်နှင့် ပတ်ဝန်းကျင်ဆိုင်ရာ သတိပြုမှု", "Ethical conduct and civic/environmental awareness", "MINDFULNESS")
-            )
-            highSchoolItems.forEach { (title, desc, pillar) ->
-                defaultHcmItems.add(
-                    HolisticCategoryEntity(
-                        categoryName = title,
-                        description = desc,
-                        pillar = pillar,
-                        educationLevel = "HIGH_SCHOOL",
-                        maxStars = 5,
-                        isEnabled = true,
-                        isDefault = true,
-                        orderIndex = orderCounter++
-                    )
-                )
-            }
-            holisticDao.insertHolisticCategories(defaultHcmItems)
 
             // 13. Default SGI (Student Growth Indicators) Categories
             val defaultSgiCategories = listOf(
