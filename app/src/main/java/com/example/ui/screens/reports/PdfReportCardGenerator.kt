@@ -686,6 +686,8 @@ object PdfReportCardGenerator {
 
                     requiredSubjects.forEachIndexed { idx, (subName, isCore) ->
                         var rowScoreStr = "-"
+                        var kgScoreVal: Double? = null
+                        var kgMaxVal = 100.0
                         if (isCore) {
                             val row = monthlyTable?.subjectRows?.find { s ->
                                 s.subjectName.equals(subName, ignoreCase = true) ||
@@ -697,6 +699,8 @@ object PdfReportCardGenerator {
                             if (row != null && row.maxPossible > 0 && (row.totalObtained > 0.0 || row.examScores.values.any { it != null })) {
                                 val scoreVal = row.totalObtained
                                 val maxVal = row.maxPossible
+                                kgScoreVal = scoreVal
+                                kgMaxVal = maxVal
                                 coreTotalObtained += scoreVal
                                 coreTotalMax += maxVal
                                 rowScoreStr = if (scoreVal % 1.0 == 0.0) "${scoreVal.toInt()}" else "$scoreVal"
@@ -712,10 +716,8 @@ object PdfReportCardGenerator {
                             isAntiAlias = true
                         }
 
-                        val scoreColor = if (isCore && rowScoreStr != "-" && rowScoreStr != "(-)") {
-                            val rowVal = row?.totalObtained
-                            val maxVal = row?.maxPossible ?: 100.0
-                            getScoreColor(rowVal, maxVal, subName)
+                        val scoreColor = if (isCore && kgScoreVal != null) {
+                            getScoreColor(kgScoreVal, kgMaxVal, subName)
                         } else COLOR_TEXT_DARK
 
                         val subScorePaint = TextPaint().apply {
