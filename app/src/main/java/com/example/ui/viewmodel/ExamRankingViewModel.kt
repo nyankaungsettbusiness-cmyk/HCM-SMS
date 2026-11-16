@@ -13,6 +13,8 @@ import com.example.data.local.entity.StudentMarkEntity
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+enum class MarkScoreType { NORMAL, DISTINCTION, FAIL, EMPTY }
+
 data class StudentRankingItem(
     val rank: Int,
     val studentId: Long,
@@ -27,7 +29,8 @@ data class StudentRankingItem(
     val distinctionCount: Int,
     val distinctionText: String,
     val isPassed: Boolean,
-    val resultStatus: String
+    val resultStatus: String,
+    val subjectScoreTypes: Map<String, MarkScoreType> = emptyMap()
 )
 
 data class RankingResultData(
@@ -206,6 +209,7 @@ class ExamRankingViewModel(
                 } else true
             }
 
+            val scoreTypes = mutableMapOf<String, MarkScoreType>()
             for (sub in relevantSubjects) {
                 val markEntity = studentMarks.find { it.subjectName.equals(sub, ignoreCase = true) }
                 if (markEntity != null && markEntity.obtainedMarks != null) {
@@ -217,14 +221,22 @@ class ExamRankingViewModel(
                     val passM = markEntity.passMark
                     val distM = markEntity.distinctionMark
 
-                    if (score < passM) {
-                        isPassed = false
-                    }
-                    if (score >= distM) {
-                        distinctionCount++
+                    when {
+                        score < passM -> {
+                            isPassed = false
+                            scoreTypes[sub] = MarkScoreType.FAIL
+                        }
+                        score >= distM -> {
+                            distinctionCount++
+                            scoreTypes[sub] = MarkScoreType.DISTINCTION
+                        }
+                        else -> {
+                            scoreTypes[sub] = MarkScoreType.NORMAL
+                        }
                     }
                 } else {
                     isPassed = false
+                    scoreTypes[sub] = MarkScoreType.EMPTY
                 }
             }
 
@@ -246,23 +258,30 @@ class ExamRankingViewModel(
                 distinctionCount = distinctionCount,
                 distinctionText = "${distinctionCount}D",
                 isPassed = isPassed,
-                resultStatus = if (!hasAnyMark) "Pending" else if (isPassed) "Pass" else "Fail"
+                resultStatus = if (!hasAnyMark) "Pending" else if (isPassed) "Pass" else "Fail",
+                subjectScoreTypes = scoreTypes
             )
         }
 
-        // Sort by Total Obtained Marks descending
+        // Sort: Pass students first by totalObtained desc, then distinctionCount desc, then rollNo asc.
+        // Followed by Fail students by totalObtained desc, then distinctionCount desc, then rollNo asc.
         val sortedItems = items.sortedWith(
-            compareByDescending<StudentRankingItem> { it.totalObtained }
+            compareByDescending<StudentRankingItem> { it.isPassed }
+                .thenByDescending { it.totalObtained }
                 .thenByDescending { it.distinctionCount }
                 .thenBy { it.rollNo }
         )
 
-        // Assign standard competition ranking (1, 2, 2, 4...)
+        // Assign ranking (1, 2, 3... continuing for fail students 21, 22, 23...)
         val rankedItems = mutableListOf<StudentRankingItem>()
         var currentRank = 1
         for (i in sortedItems.indices) {
-            if (i > 0 && sortedItems[i].totalObtained < sortedItems[i - 1].totalObtained) {
-                currentRank = i + 1
+            if (i > 0) {
+                val prev = sortedItems[i - 1]
+                val curr = sortedItems[i]
+                if (curr.isPassed != prev.isPassed || curr.totalObtained < prev.totalObtained) {
+                    currentRank = i + 1
+                }
             }
             rankedItems.add(sortedItems[i].copy(rank = currentRank))
         }

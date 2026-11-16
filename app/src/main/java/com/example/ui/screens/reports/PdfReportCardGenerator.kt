@@ -30,7 +30,9 @@ data class OneLineExamRow(
     val subjectScores: List<String>,
     val total: String,
     val rank: String,
-    val distinction: String
+    val distinction: String,
+    val rawScores: List<Double?> = emptyList(),
+    val subjectTitles: List<String> = emptyList()
 )
 
 data class MultiExamColData(
@@ -63,6 +65,26 @@ object PdfReportCardGenerator {
     private val COLOR_TEXT_MUTED = Color.rgb(75, 85, 99)     // #4B5563
     private val COLOR_BORDER_LIGHT = Color.rgb(209, 213, 219) // #D1D5DB (Light Gray 0.5pt)
     private val COLOR_WHITE = Color.WHITE
+    private val COLOR_DISTINCTION_GREEN = Color.rgb(46, 125, 50) // #2E7D32 Green
+    private val COLOR_FAIL_RED = Color.rgb(198, 40, 40)          // #C62828 Red
+
+    fun getScoreColor(
+        score: Double?,
+        maxScore: Double = 100.0,
+        subjectName: String = "",
+        defaultColor: Int = COLOR_TEXT_DARK
+    ): Int {
+        if (score == null) return defaultColor
+        val pct = if (maxScore > 0 && maxScore != 100.0) (score / maxScore) * 100.0 else score
+        val isMath = subjectName.contains("Math", ignoreCase = true)
+        val distThreshold = if (isMath) 80.0 else 75.0
+        val passThreshold = 40.0
+        return when {
+            pct < passThreshold -> COLOR_FAIL_RED
+            pct >= distThreshold -> COLOR_DISTINCTION_GREEN
+            else -> defaultColor
+        }
+    }
 
     private class PdfRenderContext(
         val context: Context,
@@ -690,8 +712,14 @@ object PdfReportCardGenerator {
                             isAntiAlias = true
                         }
 
+                        val scoreColor = if (isCore && rowScoreStr != "-" && rowScoreStr != "(-)") {
+                            val rowVal = row?.totalObtained
+                            val maxVal = row?.maxPossible ?: 100.0
+                            getScoreColor(rowVal, maxVal, subName)
+                        } else COLOR_TEXT_DARK
+
                         val subScorePaint = TextPaint().apply {
-                            color = COLOR_TEXT_DARK
+                            color = scoreColor
                             textSize = 10f
                             if (isCore) isFakeBoldText = true
                             textAlign = Paint.Align.RIGHT
@@ -816,8 +844,22 @@ object PdfReportCardGenerator {
                             "-"
                         }
 
+                        val markColor = if (hasMark && scoreD != null) {
+                            getScoreColor(scoreD, maxD, subName)
+                        } else COLOR_TEXT_DARK
+
+                        val currentMarkPaint = if (markColor != COLOR_TEXT_DARK) {
+                            TextPaint().apply {
+                                color = markColor
+                                textSize = 9.5f
+                                isFakeBoldText = true
+                                textAlign = Paint.Align.RIGHT
+                                isAntiAlias = true
+                            }
+                        } else textRightPaint
+
                         canvas.drawText(subName, MARGIN_LEFT + 10f, subY + 13f, textLeftPaint)
-                        canvas.drawText(markVal, MARGIN_RIGHT - 10f, subY + 13f, textRightPaint)
+                        canvas.drawText(markVal, MARGIN_RIGHT - 10f, subY + 13f, currentMarkPaint)
                         canvas.drawLine(MARGIN_LEFT, subY + rowHeight, MARGIN_RIGHT, subY + rowHeight, innerLinePaint)
                         subY += rowHeight
                     }
@@ -912,8 +954,19 @@ object PdfReportCardGenerator {
                         } else "-"
                         val markRankVal = "$scoreVal  |  Rank: $rVal"
 
+                        val customScoreColor = getScoreColor(cRow.totalObtained, cRow.maxPossible, cRow.subjectName)
+                        val customPaint = if (customScoreColor != COLOR_TEXT_DARK) {
+                            TextPaint().apply {
+                                color = customScoreColor
+                                textSize = 9.5f
+                                isFakeBoldText = true
+                                textAlign = Paint.Align.RIGHT
+                                isAntiAlias = true
+                            }
+                        } else textRightPaint
+
                         customCanvas.drawText(examName, MARGIN_LEFT + 10f, customY + 13f, textLeftPaint)
-                        customCanvas.drawText(markRankVal, MARGIN_RIGHT - 10f, customY + 13f, textRightPaint)
+                        customCanvas.drawText(markRankVal, MARGIN_RIGHT - 10f, customY + 13f, customPaint)
                         customCanvas.drawLine(MARGIN_LEFT, customY + rowHeight, MARGIN_RIGHT, customY + rowHeight, innerLinePaint)
                         customY += rowHeight
                     }
@@ -1477,7 +1530,9 @@ object PdfReportCardGenerator {
                                     subjectScores = scoreList.map { fmt(it) },
                                     total = fmt(totalVal),
                                     rank = rankStr,
-                                    distinction = "$distCount"
+                                    distinction = "$distCount",
+                                    rawScores = scoreList,
+                                    subjectTitles = subjects
                                 )
                             )
                         }
@@ -1523,7 +1578,9 @@ object PdfReportCardGenerator {
                                 subjectScores = scoreList.map { fmt(it) },
                                 total = fmt(totalVal),
                                 rank = rankStr,
-                                distinction = "$distCount"
+                                distinction = "$distCount",
+                                rawScores = scoreList,
+                                subjectTitles = subjects
                             )
                         )
                     }
@@ -1581,6 +1638,20 @@ object PdfReportCardGenerator {
                 textAlign = Paint.Align.CENTER
                 isAntiAlias = true
             }
+            val cellTextPaintGreen = TextPaint().apply {
+                color = COLOR_DISTINCTION_GREEN
+                textSize = 8.5f
+                isFakeBoldText = true
+                textAlign = Paint.Align.CENTER
+                isAntiAlias = true
+            }
+            val cellTextPaintRed = TextPaint().apply {
+                color = COLOR_FAIL_RED
+                textSize = 8.5f
+                isFakeBoldText = true
+                textAlign = Paint.Align.CENTER
+                isAntiAlias = true
+            }
             val cellLeftTextPaint = TextPaint().apply {
                 color = COLOR_TEXT_DARK
                 textSize = 8.5f
@@ -1624,8 +1695,15 @@ object PdfReportCardGenerator {
                 curX += examColW
                 canvas.drawLine(curX, startY, curX, startY + tableHeight, innerLinePaint)
 
-                r.subjectScores.forEach { sVal ->
-                    canvas.drawText(sVal, curX + (subColW / 2f), rowY + 12f, cellTextPaint)
+                r.subjectScores.forEachIndexed { sIdx, sVal ->
+                    val rawScore = r.rawScores.getOrNull(sIdx)
+                    val subTitle = r.subjectTitles.getOrNull(sIdx) ?: subjectTitles.getOrNull(sIdx) ?: ""
+                    val targetPaint = when (getScoreColor(rawScore, 100.0, subTitle)) {
+                        COLOR_DISTINCTION_GREEN -> cellTextPaintGreen
+                        COLOR_FAIL_RED -> cellTextPaintRed
+                        else -> cellTextPaint
+                    }
+                    canvas.drawText(sVal, curX + (subColW / 2f), rowY + 12f, targetPaint)
                     curX += subColW
                     canvas.drawLine(curX, startY, curX, startY + tableHeight, innerLinePaint)
                 }
@@ -2178,6 +2256,20 @@ object PdfReportCardGenerator {
                 textAlign = Paint.Align.CENTER
                 isAntiAlias = true
             }
+            val textCenterGreenPaint = TextPaint().apply {
+                color = COLOR_DISTINCTION_GREEN
+                textSize = if (completedCols.size > 8) 8.0f else 9.0f
+                isFakeBoldText = true
+                textAlign = Paint.Align.CENTER
+                isAntiAlias = true
+            }
+            val textCenterRedPaint = TextPaint().apply {
+                color = COLOR_FAIL_RED
+                textSize = if (completedCols.size > 8) 8.0f else 9.0f
+                isFakeBoldText = true
+                textAlign = Paint.Align.CENTER
+                isAntiAlias = true
+            }
             val textLeftBoldPaint = TextPaint().apply {
                 color = COLOR_TEXT_DARK
                 textSize = if (completedCols.size > 8) 8.5f else 9.0f
@@ -2221,14 +2313,26 @@ object PdfReportCardGenerator {
                     } else {
                         "-"
                     }
-                    canvas.drawText(scStr, curX + (colW / 2f), rowY + 12f, textCenterPaint)
+                    val scPaint = when (getScoreColor(sc, 100.0, subName)) {
+                        COLOR_DISTINCTION_GREEN -> textCenterGreenPaint
+                        COLOR_FAIL_RED -> textCenterRedPaint
+                        else -> textCenterPaint
+                    }
+                    canvas.drawText(scStr, curX + (colW / 2f), rowY + 12f, scPaint)
                     curX += colW
                 }
 
                 if (showAverageColumn) {
                     val avgVal = if (validCount > 0) sumScore / validCount else 0.0
                     val avgStr = if (validCount > 0) (if (avgVal % 1.0 == 0.0) "${avgVal.toInt()}" else String.format("%.1f", avgVal)) else "-"
-                    canvas.drawText(avgStr, curX + (colW / 2f), rowY + 12f, textCenterPaint)
+                    val avgPaint = if (validCount > 0) {
+                        when (getScoreColor(avgVal, 100.0, subName)) {
+                            COLOR_DISTINCTION_GREEN -> textCenterGreenPaint
+                            COLOR_FAIL_RED -> textCenterRedPaint
+                            else -> textCenterPaint
+                        }
+                    } else textCenterPaint
+                    canvas.drawText(avgStr, curX + (colW / 2f), rowY + 12f, avgPaint)
                 }
 
                 canvas.drawLine(MARGIN_LEFT, rowY + rowH, MARGIN_RIGHT, rowY + rowH, innerLinePaint)

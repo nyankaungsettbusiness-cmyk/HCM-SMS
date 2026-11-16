@@ -394,11 +394,18 @@ fun KindergartenReportCardSkeleton(
                                     color = if (isCore) Color(0xFF111827) else Color(0xFF6B7280),
                                     modifier = Modifier.weight(2f)
                                 )
+                                val scoreNum = displayScore.toDoubleOrNull()
+                                val scoreColor = when {
+                                    scoreNum == null -> Color(0xFF111827)
+                                    scoreNum < 40.0 -> Color(0xFFB91C1C)
+                                    scoreNum >= (if (subName.contains("Math", ignoreCase = true)) 80.0 else 75.0) -> Color(0xFF15803D)
+                                    else -> Color(0xFF111827)
+                                }
                                 Text(
                                     text = displayScore,
                                     fontSize = 10.sp,
                                     fontWeight = if (isCore) FontWeight.Bold else FontWeight.Normal,
-                                    color = Color(0xFF111827),
+                                    color = scoreColor,
                                     modifier = Modifier.weight(1f),
                                     textAlign = TextAlign.End
                                 )

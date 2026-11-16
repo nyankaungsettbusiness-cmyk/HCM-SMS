@@ -52,23 +52,34 @@ object DynamicExaminationEngine {
     ): Pair<Int?, Int> {
         val totalCohort = if (cohortStudentIds.isNotEmpty()) cohortStudentIds.size else 1
 
-        val studentTotals: List<Pair<Long, Double>> = cohortStudentIds.mapNotNull { stId ->
+        data class CohortStudentPerformance(
+            val studentId: Long,
+            val totalObtained: Double,
+            val isPassed: Boolean
+        )
+
+        val studentPerformances: List<CohortStudentPerformance> = cohortStudentIds.mapNotNull { stId ->
             val marks = studentMarks.filter { it.studentId == stId && it.assessmentId in assessmentIds }
-            val validMarks = marks.mapNotNull { it.obtainedMarks }
+            val validMarks = marks.filter { it.obtainedMarks != null }
             if (validMarks.isNotEmpty()) {
-                val totalObtained: Double = validMarks.sum()
-                Pair(stId, totalObtained)
+                val totalObtained: Double = validMarks.mapNotNull { it.obtainedMarks }.sum()
+                val isPassed = validMarks.all { (it.obtainedMarks ?: 0.0) >= it.passMark }
+                CohortStudentPerformance(stId, totalObtained, isPassed)
             } else {
                 null
             }
         }
 
-        if (studentTotals.isEmpty()) {
+        if (studentPerformances.isEmpty()) {
             return Pair(null, totalCohort)
         }
 
-        val sorted = studentTotals.sortedByDescending { it.second }
-        val rankIdx = sorted.indexOfFirst { it.first == studentId }
+        // Rank Pass students first (descending total score), followed by Fail students (descending total score)
+        val sorted = studentPerformances.sortedWith(
+            compareByDescending<CohortStudentPerformance> { it.isPassed }
+                .thenByDescending { it.totalObtained }
+        )
+        val rankIdx = sorted.indexOfFirst { it.studentId == studentId }
         val rank = if (rankIdx >= 0) rankIdx + 1 else null
 
         return Pair(rank, totalCohort)

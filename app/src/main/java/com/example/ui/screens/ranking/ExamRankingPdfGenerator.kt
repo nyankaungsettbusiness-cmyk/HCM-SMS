@@ -88,6 +88,20 @@ object ExamRankingPdfGenerator {
             isAntiAlias = true
         }
 
+        val markDistinctionPaint = Paint().apply {
+            color = Color.rgb(46, 125, 50) // Green for distinction mark
+            textSize = 9.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+
+        val markFailPaint = Paint().apply {
+            color = Color.rgb(198, 40, 40) // Red for fail mark
+            textSize = 9.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+
         val borderPaint = Paint().apply {
             color = Color.rgb(220, 224, 230)
             style = Paint.Style.STROKE
@@ -200,13 +214,21 @@ object ExamRankingPdfGenerator {
             canvas.drawText(nameText, x, yPos + 14f, textPaint)
             x += nameWidth
 
-            // Dynamic Subject Marks
+            // Dynamic Subject Marks (Distinction in Green, Fail in Red)
             for (sub in data.subjects) {
                 val markVal = item.subjectMarks[sub]
                 val markStr = if (markVal != null) {
                     if (markVal % 1.0 == 0.0) markVal.toInt().toString() else String.format(Locale.US, "%.1f", markVal)
                 } else "-"
-                canvas.drawText(markStr, x, yPos + 14f, textPaint)
+
+                val scoreType = item.subjectScoreTypes[sub] ?: com.example.ui.viewmodel.MarkScoreType.NORMAL
+                val scorePaint = when (scoreType) {
+                    com.example.ui.viewmodel.MarkScoreType.DISTINCTION -> markDistinctionPaint
+                    com.example.ui.viewmodel.MarkScoreType.FAIL -> markFailPaint
+                    else -> textPaint
+                }
+
+                canvas.drawText(markStr, x, yPos + 14f, scorePaint)
                 x += subjectColWidth
             }
 

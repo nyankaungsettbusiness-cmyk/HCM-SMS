@@ -443,7 +443,20 @@ fun ExamRankingScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(sub, fontSize = 11.sp, modifier = Modifier.weight(2f))
-                                    Text(scoreStr, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                                    val scoreType = item.subjectScoreTypes[sub] ?: com.example.ui.viewmodel.MarkScoreType.NORMAL
+                                    val scoreColor = when (scoreType) {
+                                        com.example.ui.viewmodel.MarkScoreType.DISTINCTION -> Color(0xFF15803D)
+                                        com.example.ui.viewmodel.MarkScoreType.FAIL -> Color(0xFFB91C1C)
+                                        else -> MaterialTheme.colorScheme.onSurface
+                                    }
+                                    Text(
+                                        text = scoreStr,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = scoreColor,
+                                        modifier = Modifier.weight(1f),
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             }
