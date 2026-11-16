@@ -110,16 +110,8 @@ fun HolisticAssessmentScreen(
     val grades = if (dbGrades.isNotEmpty()) dbGrades.map { it.gradeName } else SchoolPolicy.VALID_GRADES
     val classes = listOf("All") + (if (dbClasses.isNotEmpty()) dbClasses.map { it.className }.distinct().filter { it.isNotBlank() && it != "All" } else listOf("A", "B", "C", "D"))
 
-    // Categories to display for HCM rating entry
-    val displayCategories = if (enabledHolisticCategories.isNotEmpty()) {
-        enabledHolisticCategories
-    } else {
-        listOf(
-            HolisticCategoryEntity(id = -1L, categoryName = "Honesty", pillar = "HONESTY", maxStars = 5),
-            HolisticCategoryEntity(id = -2L, categoryName = "Curiosity", pillar = "CURIOSITY", maxStars = 5),
-            HolisticCategoryEntity(id = -3L, categoryName = "Mindfulness", pillar = "MINDFULNESS", maxStars = 5)
-        )
-    }
+    // Categories to display for HCM rating entry (No auto seed; only configured items)
+    val displayCategories = enabledHolisticCategories
 
     Scaffold(
         contentWindowInsets = WindowInsets(0.dp),

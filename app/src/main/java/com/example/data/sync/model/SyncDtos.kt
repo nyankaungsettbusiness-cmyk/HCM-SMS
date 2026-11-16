@@ -1034,6 +1034,7 @@ data class HolisticCategorySupabaseDto(
     val code: String = "",
     val name: String = "",
     val domain: String = "",
+    val pillar: String? = null,
     @SerialName("category_name") val categoryName: String = "",
     val description: String = "",
     @SerialName("max_stars") val maxStars: Int = 5,
@@ -1073,7 +1074,31 @@ data class HolisticCategorySupabaseDto(
         }
 
         val cleanDescription = description.replace(Regex("^\\[(KINDERGARTEN|PRIMARY|SECONDARY|HIGH_SCHOOL|KG)\\]\\s*"), "").trim()
-        val resolvedPillar = domain.ifBlank { "HONESTY" }.uppercase()
+        val rawPillar = (pillar?.takeIf { it.isNotBlank() } ?: domain).trim().uppercase()
+        val resolvedPillar = when {
+            resolvedName.contains("အမှားဝန်ခံ") ||
+                    resolvedName.contains("ပိုင်ဆိုင်မှု") ||
+                    resolvedName.contains("စည်းကမ်းစောင့်ထိန်း") ||
+                    resolvedName.contains("ခံစားချက်ကို မှန်ကန်စွာ") ||
+                    resolvedName.contains("မိမိလုပ်ဆောင်မှု") -> "HONESTY"
+
+            resolvedName.contains("စိတ်ဝင်တစား") ||
+                    resolvedName.contains("အသစ်အဆန်း") ||
+                    resolvedName.contains("အဖြေရှာရန်") ||
+                    resolvedName.contains("အာရုံစိုက်") ||
+                    resolvedName.contains("တီထွင်ဖန်တီး") -> "CURIOSITY"
+
+            resolvedName.contains("စိတ်ရှည်စွာ") ||
+                    resolvedName.contains("ငြိမ်သက်ခြင်း") ||
+                    resolvedName.contains("ပစ္စည်းသိမ်း") ||
+                    resolvedName.contains("သူတပါးခံစားချက်") ||
+                    resolvedName.contains("ခန္ဓာကိုယ်လှုပ်ရှားမှု") -> "MINDFULNESS"
+
+            rawPillar == "H" || rawPillar.contains("HONEST") -> "HONESTY"
+            rawPillar == "C" || rawPillar.contains("CURIOUS") -> "CURIOSITY"
+            rawPillar == "M" || rawPillar.contains("MINDFUL") -> "MINDFULNESS"
+            else -> "HONESTY"
+        }
 
         return HolisticCategoryEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
@@ -1114,6 +1139,7 @@ data class HolisticCategorySupabaseDto(
                 code = validCode,
                 name = validName,
                 domain = entity.pillar,
+                pillar = entity.pillar,
                 categoryName = validName,
                 description = finalDesc,
                 maxStars = entity.maxStars,

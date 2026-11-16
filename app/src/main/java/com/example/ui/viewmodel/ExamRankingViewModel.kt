@@ -165,10 +165,29 @@ class ExamRankingViewModel(
             normalizeGradeKey(std.gradeName) == targetGradeKey
         }.distinctBy { it.id }.sortedBy { it.rollNumber }
 
-        val asmMarks = allMarks.filter { it.assessmentId == currentAsm.id }
+        val rawAsmMarks = allMarks.filter { it.assessmentId == currentAsm.id }
 
-        // Collect all distinct subject names for this assessment
-        val subjectsForAsm = asmMarks.map { it.subjectName }.distinct()
+        // Self-heal generic "All Subjects" marks (e.g. in G1 where Myanmar was saved as "All Subjects")
+        val hasMyanmarAlready = rawAsmMarks.any { it.subjectName.equals("Myanmar", ignoreCase = true) }
+        val asmMarks = rawAsmMarks.map { mark ->
+            val isGeneric = mark.subjectName.equals("All Subjects", ignoreCase = true) ||
+                    mark.subjectName.equals("All", ignoreCase = true) ||
+                    mark.subjectName.isBlank()
+            if (isGeneric && !hasMyanmarAlready) {
+                mark.copy(subjectName = "Myanmar")
+            } else {
+                mark
+            }
+        }.filter {
+            !it.subjectName.equals("All Subjects", ignoreCase = true) &&
+                    !it.subjectName.equals("All", ignoreCase = true) &&
+                    it.subjectName.isNotBlank()
+        }
+
+        // Collect all distinct valid subject names for this assessment
+        val subjectsForAsm = asmMarks.map { it.subjectName }.distinct().filter {
+            !it.equals("All Subjects", ignoreCase = true) && !it.equals("All", ignoreCase = true) && it.isNotBlank()
+        }
         val sortedSubjects = sortSubjectsLogically(subjectsForAsm)
 
         val isHighSchool = targetGradeKey in listOf("G10", "G11", "G12")
@@ -332,6 +351,12 @@ class ExamRankingViewModel(
     }
 
     private fun sortSubjectsLogically(subjects: List<String>): List<String> {
+        val filtered = subjects.filter {
+            !it.equals("All Subjects", ignoreCase = true) &&
+                    !it.equals("All", ignoreCase = true) &&
+                    !it.equals("ALL", ignoreCase = true) &&
+                    it.isNotBlank()
+        }
         val priorityMap = mapOf(
             "Myanmar" to 1,
             "English" to 2,
@@ -348,7 +373,7 @@ class ExamRankingViewModel(
             "Social Studies" to 13,
             "English (International)" to 14
         )
-        return subjects.sortedWith(compareBy({ priorityMap[it] ?: 99 }, { it }))
+        return filtered.sortedWith(compareBy({ priorityMap[it] ?: 99 }, { it }))
     }
 
     companion object {

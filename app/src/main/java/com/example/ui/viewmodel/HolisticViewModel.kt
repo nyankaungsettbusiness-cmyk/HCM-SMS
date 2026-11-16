@@ -79,62 +79,6 @@ class HolisticViewModel(
                 }
             }
         }
-        viewModelScope.launch {
-            activeEducationLevel.collect { level ->
-                ensureDefaultHcmItemsForLevel(level)
-            }
-        }
-        viewModelScope.launch {
-            adminConfigLevel.collect { level ->
-                ensureDefaultHcmItemsForLevel(level)
-            }
-        }
-    }
-
-    private fun ensureDefaultHcmItemsForLevel(level: String) {
-        viewModelScope.launch {
-            val existing = holisticRepository.getHolisticCategoriesForLevelList(level)
-            if (existing.isEmpty()) {
-                val defaultItems = getDefaultHcmItemsForLevel(level)
-                if (defaultItems.isNotEmpty()) {
-                    holisticRepository.addHolisticCategories(defaultItems)
-                }
-            }
-        }
-    }
-
-    private fun getDefaultHcmItemsForLevel(level: String): List<HolisticCategoryEntity> {
-        return when (level.uppercase()) {
-            "KINDERGARTEN" -> listOf(
-                HolisticCategoryEntity(categoryName = "မိမိကိုယ်ကို ယုံကြည်မှုရှိခြင်း", description = "Self-confidence and self-reliance in daily activities", pillar = "HONESTY", educationLevel = "KINDERGARTEN", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 1),
-                HolisticCategoryEntity(categoryName = "စည်းကမ်းလိုက်နာခြင်း", description = "Adherence to classroom rules and teacher guidance", pillar = "HONESTY", educationLevel = "KINDERGARTEN", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 2),
-                HolisticCategoryEntity(categoryName = "သူငယ်ချင်းများနှင့် ပူးပေါင်းဆောင်ရွက်ခြင်း", description = "Peer cooperation and friendly interaction", pillar = "MINDFULNESS", educationLevel = "KINDERGARTEN", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 3),
-                HolisticCategoryEntity(categoryName = "ဆရာ/ဆရာမ၏ ညွှန်ကြားချက်ကို လိုက်နာခြင်း", description = "Following instructions attentiveness", pillar = "HONESTY", educationLevel = "KINDERGARTEN", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 4),
-                HolisticCategoryEntity(categoryName = "အခြေခံတစ်ကိုယ်ရေသန့်ရှင်းရေးကို ထိန်းသိမ်းခြင်း", description = "Basic personal hygiene and cleanliness habits", pillar = "MINDFULNESS", educationLevel = "KINDERGARTEN", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 5)
-            )
-            "PRIMARY" -> listOf(
-                HolisticCategoryEntity(categoryName = "တာဝန်ယူမှုရှိခြင်း", description = "Personal responsibility and duty fulfillment", pillar = "HONESTY", educationLevel = "PRIMARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 1),
-                HolisticCategoryEntity(categoryName = "သင်ယူမှုတွင် စိတ်ပါဝင်စားခြင်း", description = "Enthusiasm and active engagement in learning", pillar = "CURIOSITY", educationLevel = "PRIMARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 2),
-                HolisticCategoryEntity(categoryName = "အဖွဲ့လိုက်လုပ်ဆောင်နိုင်ခြင်း", description = "Teamwork and active group participation", pillar = "MINDFULNESS", educationLevel = "PRIMARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 3),
-                HolisticCategoryEntity(categoryName = "အချိန်ကို တန်ဖိုးထားအသုံးပြုခြင်း", description = "Punctuality and efficient time management", pillar = "HONESTY", educationLevel = "PRIMARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 4),
-                HolisticCategoryEntity(categoryName = "ရိုသေလေးစားမှုနှင့် ယဉ်ကျေးပျူငှာမှုရှိခြင်း", description = "Respect towards elders and polite social etiquette", pillar = "MINDFULNESS", educationLevel = "PRIMARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 5)
-            )
-            "SECONDARY" -> listOf(
-                HolisticCategoryEntity(categoryName = "မိမိကိုယ်ကို စီမံခန့်ခွဲနိုင်ခြင်း", description = "Self-management and emotional regulation", pillar = "MINDFULNESS", educationLevel = "SECONDARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 1),
-                HolisticCategoryEntity(categoryName = "ဝေဖန်စဉ်းစားနိုင်ခြင်း", description = "Critical thinking and logical analysis", pillar = "CURIOSITY", educationLevel = "SECONDARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 2),
-                HolisticCategoryEntity(categoryName = "ခေါင်းဆောင်မှုစွမ်းရည်", description = "Leadership skills and positive initiative", pillar = "HONESTY", educationLevel = "SECONDARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 3),
-                HolisticCategoryEntity(categoryName = "လူမှုဆက်ဆံရေးကောင်းမွန်ခြင်း", description = "Effective communication and interpersonal relationship", pillar = "MINDFULNESS", educationLevel = "SECONDARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 4),
-                HolisticCategoryEntity(categoryName = "ပြဿနာဖြေရှင်းနိုင်စွမ်းရှိခြင်း", description = "Problem solving capability and resilience", pillar = "CURIOSITY", educationLevel = "SECONDARY", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 5)
-            )
-            "HIGH_SCHOOL" -> listOf(
-                HolisticCategoryEntity(categoryName = "စည်းကမ်းနှင့် တာဝန်ယူမှု", description = "High integrity, discipline, and ethical responsibility", pillar = "HONESTY", educationLevel = "HIGH_SCHOOL", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 1),
-                HolisticCategoryEntity(categoryName = "မိမိရည်မှန်းချက်အတွက် ကြိုးစားအားထုတ်မှု", description = "Goal-oriented effort and academic dedication", pillar = "CURIOSITY", educationLevel = "HIGH_SCHOOL", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 2),
-                HolisticCategoryEntity(categoryName = "ခေါင်းဆောင်မှုနှင့် ပူးပေါင်းဆောင်ရွက်မှု", description = "Advanced leadership and strategic collaboration", pillar = "MINDFULNESS", educationLevel = "HIGH_SCHOOL", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 3),
-                HolisticCategoryEntity(categoryName = "ကိုယ်ပိုင်ဆုံးဖြတ်ချက်ချနိုင်မှု", description = "Independent decision-making and maturity", pillar = "CURIOSITY", educationLevel = "HIGH_SCHOOL", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 4),
-                HolisticCategoryEntity(categoryName = "လူ့ကျင့်ဝတ်နှင့် ပတ်ဝန်းကျင်ဆိုင်ရာ သတိပြုမှု", description = "Ethical conduct and civic/environmental awareness", pillar = "MINDFULNESS", educationLevel = "HIGH_SCHOOL", maxStars = 5, isEnabled = true, isDefault = true, orderIndex = 5)
-            )
-            else -> emptyList()
-        }
     }
 
     // Admin Assessment Periods for selected admin level

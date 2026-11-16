@@ -143,40 +143,56 @@ object ExamRankingPdfGenerator {
 
         // Table Column Calculations
         val availableWidth = PAGE_WIDTH - (MARGIN * 2)
-        val rankWidth = 45f
-        val nameWidth = 140f
-        val totalWidth = 55f
-        val distWidth = 55f
-        val resultWidth = 55f
+        val rankWidth = 40f
+        val nameWidth = 155f
+        val totalWidth = 50f
+        val distWidth = 50f
+        val resultWidth = 52f
 
         val fixedWidth = rankWidth + nameWidth + totalWidth + distWidth + resultWidth
         val subjectsCount = data.subjects.size.coerceAtLeast(1)
-        val subjectColWidth = ((availableWidth - fixedWidth) / subjectsCount).coerceAtLeast(45f)
+        val subjectColWidth = ((availableWidth - fixedWidth) / subjectsCount).coerceAtLeast(42f)
 
         fun drawTableHeader(c: Canvas, topY: Float): Float {
-            val headerHeight = 22f
+            val headerHeight = 26f
             c.drawRect(MARGIN, topY, PAGE_WIDTH - MARGIN, topY + headerHeight, tableHeaderBgPaint)
 
             var x = MARGIN + 6f
-            c.drawText("Rank", x, topY + 15f, tableHeaderPaint)
+            c.drawText("Rank", x, topY + 17f, tableHeaderPaint)
             x += rankWidth
 
-            c.drawText("Student Name", x, topY + 15f, tableHeaderPaint)
+            c.drawText("Student Name", x, topY + 17f, tableHeaderPaint)
             x += nameWidth
 
             for (sub in data.subjects) {
-                val shortSub = if (sub.length > 8) sub.take(7) + ".." else sub
-                c.drawText(shortSub, x, topY + 15f, tableHeaderPaint)
+                val maxColW = subjectColWidth - 4f
+                val words = sub.split(" ")
+                if (tableHeaderPaint.measureText(sub) <= maxColW) {
+                    c.drawText(sub, x, topY + 17f, tableHeaderPaint)
+                } else if (words.size > 1) {
+                    val line1 = words.first()
+                    val line2 = words.drop(1).joinToString(" ")
+                    val smallSubPaint = Paint(tableHeaderPaint).apply { textSize = 8.0f }
+                    c.drawText(line1, x, topY + 11f, smallSubPaint)
+                    val dispLine2 = if (smallSubPaint.measureText(line2) > maxColW) line2.take(12) + ".." else line2
+                    c.drawText(dispLine2, x, topY + 22f, smallSubPaint)
+                } else {
+                    val smallSubPaint = Paint(tableHeaderPaint).apply {
+                        textSize = if (tableHeaderPaint.measureText(sub) > maxColW * 1.2f) 7.5f else 8.2f
+                    }
+                    val dispSub = if (smallSubPaint.measureText(sub) > maxColW) sub.take(10) + ".." else sub
+                    c.drawText(dispSub, x, topY + 17f, smallSubPaint)
+                }
                 x += subjectColWidth
             }
 
-            c.drawText("Total", x, topY + 15f, tableHeaderPaint)
+            c.drawText("Total", x, topY + 17f, tableHeaderPaint)
             x += totalWidth
 
-            c.drawText("Dist.", x, topY + 15f, tableHeaderPaint)
+            c.drawText("Dist.", x, topY + 17f, tableHeaderPaint)
             x += distWidth
 
-            c.drawText("Result", x, topY + 15f, tableHeaderPaint)
+            c.drawText("Result", x, topY + 17f, tableHeaderPaint)
 
             return topY + headerHeight
         }
@@ -209,9 +225,23 @@ object ExamRankingPdfGenerator {
             canvas.drawText("${item.rank}", x, yPos + 14f, textPaint)
             x += rankWidth
 
-            // Name
-            val nameText = if (item.displayName.length > 20) item.displayName.take(18) + ".." else item.displayName
-            canvas.drawText(nameText, x, yPos + 14f, textPaint)
+            // Name: Display full name without premature truncation
+            val maxNameW = nameWidth - 8f
+            val fullName = item.displayName
+            if (textPaint.measureText(fullName) <= maxNameW) {
+                canvas.drawText(fullName, x, yPos + 14f, textPaint)
+            } else {
+                val scaledNamePaint = Paint(textPaint).apply { textSize = 8.2f }
+                if (scaledNamePaint.measureText(fullName) <= maxNameW) {
+                    canvas.drawText(fullName, x, yPos + 14f, scaledNamePaint)
+                } else {
+                    var trimmed = fullName
+                    while (trimmed.length > 3 && scaledNamePaint.measureText(trimmed + "..") > maxNameW) {
+                        trimmed = trimmed.dropLast(1)
+                    }
+                    canvas.drawText(trimmed + "..", x, yPos + 14f, scaledNamePaint)
+                }
+            }
             x += nameWidth
 
             // Dynamic Subject Marks (Distinction in Green, Fail in Red)

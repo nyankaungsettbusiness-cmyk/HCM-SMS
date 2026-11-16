@@ -412,6 +412,14 @@ abstract class AppDatabase : RoomDatabase() {
                     db.execSQL("UPDATE assessment_subjects SET subjectName = 'Biology' WHERE subjectName LIKE 'Biology%' OR subjectName = 'Biology / Computer Science'")
                     db.execSQL("UPDATE assessment_subjects SET subjectName = 'Economics' WHERE subjectName LIKE '%Economics%' OR subjectName LIKE '%History & Economics%' OR subjectName LIKE '%Economics / History%' OR subjectName LIKE '%Economics/History%'")
 
+                    // 4. Auto-heal Grade 1 marks where subjectName was incorrectly recorded as 'All Subjects' or 'All'
+                    try {
+                        db.execSQL("UPDATE student_marks SET subjectName = 'Myanmar' WHERE subjectName IN ('All Subjects', 'All', 'ALL') AND assessmentId IN (SELECT id FROM assessments WHERE grade LIKE '%1%' OR grade LIKE '%G1%')")
+                        db.execSQL("UPDATE assessment_subjects SET subjectName = 'Myanmar' WHERE subjectName IN ('All Subjects', 'All', 'ALL') AND assessmentId IN (SELECT id FROM assessments WHERE grade LIKE '%1%' OR grade LIKE '%G1%')")
+                    } catch (e: Exception) {
+                        android.util.Log.e("AppDatabase", "Error auto-healing G1 Myanmar marks: ${e.message}")
+                    }
+
                     val policyDao = database.schoolPolicyDao()
                     if (policyDao.getSchoolSettings() == null) {
                         populateInitialData(database)
