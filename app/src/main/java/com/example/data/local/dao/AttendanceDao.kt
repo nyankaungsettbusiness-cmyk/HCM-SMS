@@ -65,6 +65,9 @@ interface AttendanceDao {
     @Query("SELECT * FROM attendance_records ORDER BY recordedDateTime DESC")
     suspend fun getAllAttendanceRecordsSync(): List<AttendanceRecordEntity>
 
+    @Query("UPDATE attendance_records SET isDirty = 1")
+    suspend fun markAllAttendanceDirty()
+
     @Query("DELETE FROM attendance_records")
     suspend fun deleteAll()
 }

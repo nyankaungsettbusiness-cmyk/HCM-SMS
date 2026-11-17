@@ -2970,54 +2970,141 @@ class SyncRepository(
         val allRemoteAttendance = fetchAllRemotePaged<AttendanceRecordSupabaseDto>(client, "attendance_records", 1000L)
         val remoteMap = allRemoteAttendance.associateBy { it.uuid }
 
+        val allLocalAttendance = dao.getAllAttendanceRecordsSync()
+        if (allLocalAttendance.isNotEmpty() && remoteMap.isEmpty()) {
+            Log.i(TAG, "Self-healing triggered: Remote attendance_records is empty (${remoteMap.size}) while local has ${allLocalAttendance.size} records. Re-marking all local attendance as dirty for cloud push.")
+            dao.markAllAttendanceDirty()
+        }
+
+        // Pre-fetch remote students list once to eliminate sequential network calls
+        val remoteStudentsList = try {
+            client.from("students").select().decodeList<StudentSupabaseDto>()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
+        val remoteStudentById = remoteStudentsList.associateBy { it.id }
+        val remoteStudentByUuid = remoteStudentsList.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
+        val remoteStudentByCode = remoteStudentsList.filter { it.studentId.isNotBlank() }.associateBy { it.studentId }
+
+        remoteStudentsList.forEach { remoteStudent ->
+            if (remoteStudent.id != null) {
+                val localStudent = (if (remoteStudent.uuid.isNotBlank()) {
+                    studentDao.getStudentByUuid(remoteStudent.uuid)
+                } else null) ?: (if (remoteStudent.studentId.isNotBlank()) {
+                    studentDao.getStudentByCode(remoteStudent.studentId)
+                } else null)
+
+                if (localStudent != null) {
+                    localToRemoteStudentIdCache[localStudent.id] = remoteStudent.id
+                    remoteToLocalStudentIdCache[remoteStudent.id] = localStudent.id
+                }
+            }
+        }
+
+        val failedIdsThisRun = mutableSetOf<Long>()
+
         while (true) {
-            val unsynced = dao.getAttendanceRecordsForSync(limit = 300)
+            val allCandidates = dao.getAttendanceRecordsForSync(limit = 1000)
+            val unsynced = allCandidates.filter { it.id !in failedIdsThisRun }
             if (unsynced.isEmpty()) break
-            var batchProcessed = 0
+
+            val pushBatch = mutableListOf<AttendanceRecordPushDto>()
+            val syncedPairs = mutableListOf<Pair<Long, String>>()
+
             for (item in unsynced) {
                 val assignedUuid = item.uuid.ifBlank { UUID.randomUUID().toString() }
                 val localStudent = studentDao.getStudentById(item.studentId)
                 if (localStudent == null) {
                     Log.w(TAG, "Skipping attendance_record push: local studentId ${item.studentId} not found")
                     dao.markAttendanceRecordSynced(item.id, assignedUuid)
-                    batchProcessed++
                     continue
                 }
-                val targetStudentId = ensureRemoteStudentId(client, localStudent)
-                try {
-                    val updated = if (item.uuid.isBlank()) item.copy(uuid = assignedUuid) else item
-                    val pushDto = AttendanceRecordPushDto.fromEntity(
-                        entity = updated,
-                        targetStudentId = targetStudentId
-                    )
-                    client.from("attendance_records").upsert(pushDto, onConflict = "uuid")
-                    dao.markAttendanceRecordSynced(updated.id, assignedUuid)
-                    pushed++
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to push attendance_record: ${e.message}")
-                    dao.markAttendanceRecordSynced(item.id, assignedUuid)
-                }
-                batchProcessed++
+
+                val targetStudentId = localToRemoteStudentIdCache[localStudent.id]
+                    ?: (if (localStudent.uuid.isNotBlank()) remoteStudentByUuid[localStudent.uuid]?.id else null)
+                    ?: (if (localStudent.studentCode.isNotBlank()) remoteStudentByCode[localStudent.studentCode]?.id else null)
+                    ?: ensureRemoteStudentId(client, localStudent)
+
+                val updated = if (item.uuid.isBlank()) item.copy(uuid = assignedUuid) else item
+                val pushDto = AttendanceRecordPushDto.fromEntity(
+                    entity = updated,
+                    targetStudentId = targetStudentId
+                )
+                pushBatch.add(pushDto)
+                syncedPairs.add(Pair(updated.id, assignedUuid))
             }
-            if (batchProcessed == 0) break
+
+            if (pushBatch.isEmpty()) break
+
+            var chunkSuccess = 0
+            for (chunkIndex in pushBatch.indices step 250) {
+                val toIndex = minOf(chunkIndex + 250, pushBatch.size)
+                val chunk = pushBatch.subList(chunkIndex, toIndex)
+                val chunkSynced = syncedPairs.subList(chunkIndex, toIndex)
+
+                try {
+                    client.from("attendance_records").upsert(chunk, onConflict = "uuid")
+                    chunkSynced.forEach { (id, uuid) ->
+                        dao.markAttendanceRecordSynced(id, uuid)
+                    }
+                    pushed += chunk.size
+                    chunkSuccess += chunk.size
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Batch upsert attendance_records chunk failed: ${e.message}, falling back to single items")
+                    for (i in chunk.indices) {
+                        val dto = chunk[i]
+                        val (id, uuid) = chunkSynced[i]
+                        try {
+                            client.from("attendance_records").upsert(dto, onConflict = "uuid")
+                            dao.markAttendanceRecordSynced(id, uuid)
+                            pushed++
+                            chunkSuccess++
+                        } catch (ce: kotlinx.coroutines.CancellationException) {
+                            throw ce
+                        } catch (ex: Exception) {
+                            Log.e(TAG, "Failed single attendance_record push (id=$id): ${ex.message}")
+                            failedIdsThisRun.add(id)
+                        }
+                    }
+                }
+            }
+
+            if (chunkSuccess == 0 && syncedPairs.all { it.first in failedIdsThisRun }) {
+                Log.w(TAG, "No further attendance records can be pushed in this pass (${failedIdsThisRun.size} problematic items deferred).")
+                break
+            }
         }
 
         try {
             val remotes = allRemoteAttendance
             for (remoteDto in remotes) {
                 val existingLocal = if (remoteDto.uuid.isNotBlank()) dao.getAttendanceRecordByUuid(remoteDto.uuid) else null
+                val localStudent = remoteToLocalStudentIdCache[remoteDto.studentId]?.let { studentDao.getStudentById(it) }
+                val resolvedStudentId = localStudent?.id ?: remoteDto.studentId
+                val studentCode = localStudent?.studentCode ?: existingLocal?.studentCode ?: ""
+                val studentName = localStudent?.name ?: existingLocal?.studentName ?: ""
+
                 if (existingLocal != null) {
                     val remoteEntity = remoteDto.toEntity(
                         existingLocalId = existingLocal.id,
-                        studentCode = existingLocal.studentCode,
-                        studentName = existingLocal.studentName
+                        resolvedStudentId = resolvedStudentId,
+                        studentCode = studentCode,
+                        studentName = studentName
                     )
                     if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
                         dao.insertOrUpdateRecord(remoteEntity)
                         pulled++
                     }
                 } else {
-                    val newEntity = remoteDto.toEntity()
+                    val newEntity = remoteDto.toEntity(
+                        resolvedStudentId = resolvedStudentId,
+                        studentCode = studentCode,
+                        studentName = studentName
+                    )
                     dao.insertOrUpdateRecord(newEntity)
                     pulled++
                 }

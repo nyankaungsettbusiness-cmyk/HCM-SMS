@@ -1569,6 +1569,7 @@ data class AttendanceRecordSupabaseDto(
     @SerialName("academic_year") val academicYear: String = "",
     val grade: String = "",
     @SerialName("class_name") val className: String = "",
+    val session: String = "MORNING",
     val status: String = "PRESENT",
     @SerialName("recorded_by") val recordedBy: String = "Teacher",
     @SerialName("recorded_date_time") val recordedDateTime: String? = null,
@@ -1584,11 +1585,12 @@ data class AttendanceRecordSupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val parsedRecTime = parseIsoToMillis(recordedDateTime)
         val parsedStatus = try { AttendanceStatus.valueOf(status) } catch (e: Exception) { AttendanceStatus.PRESENT }
+        val parsedSession = try { AttendanceSession.valueOf(session) } catch (e: Exception) { AttendanceSession.MORNING }
         return AttendanceRecordEntity(
             id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
             academicYear = academicYear,
             date = date,
-            session = AttendanceSession.MORNING,
+            session = parsedSession,
             studentId = resolvedStudentId,
             studentCode = studentCode,
             studentName = studentName,
@@ -1615,6 +1617,7 @@ data class AttendanceRecordSupabaseDto(
                 academicYear = entity.academicYear,
                 grade = entity.grade,
                 className = entity.className,
+                session = entity.session.name,
                 status = entity.status.name,
                 recordedBy = entity.recordedBy,
                 recordedDateTime = millisToIso(entity.recordedDateTime),
@@ -1633,6 +1636,7 @@ data class AttendanceRecordPushDto(
     @SerialName("academic_year") val academicYear: String = "",
     val grade: String = "",
     @SerialName("class_name") val className: String = "",
+    val session: String = "MORNING",
     val status: String = "PRESENT",
     @SerialName("recorded_by") val recordedBy: String = "Teacher",
     @SerialName("recorded_date_time") val recordedDateTime: String? = null,
@@ -1652,6 +1656,7 @@ data class AttendanceRecordPushDto(
                 academicYear = entity.academicYear,
                 grade = entity.grade,
                 className = entity.className,
+                session = entity.session.name,
                 status = entity.status.name,
                 recordedBy = entity.recordedBy,
                 recordedDateTime = millisToIso(entity.recordedDateTime),
