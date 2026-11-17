@@ -234,7 +234,16 @@ fun HcmMainApp(
             academicYearDao = db.academicYearDao()
         )
     )
-    val holisticViewModel: HolisticViewModel = viewModel(factory = HolisticViewModelFactory(holisticRepo, studentRepo, academicYearRepo))
+    val holisticViewModel: HolisticViewModel = viewModel(
+        factory = HolisticViewModelFactory(
+            holisticRepo,
+            studentRepo,
+            academicYearRepo,
+            marksDao = db.marksDao(),
+            attendanceDao = db.attendanceDao(),
+            assessmentDao = db.assessmentDao()
+        )
+    )
     val attendanceViewModel: AttendanceViewModel = viewModel(factory = AttendanceViewModelFactory(attendanceRepo, studentRepo, academicYearRepo))
     val academicYearViewModel: AcademicYearViewModel = viewModel(factory = AcademicYearViewModelFactory(academicYearRepo, studentRepo))
     val dashboardViewModel: DashboardViewModel = viewModel(factory = com.example.ui.viewmodel.DashboardViewModelFactory(dashboardRepo))

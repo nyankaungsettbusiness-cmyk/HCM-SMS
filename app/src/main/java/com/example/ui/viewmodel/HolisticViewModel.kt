@@ -3,16 +3,23 @@ package com.example.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.dao.AssessmentDao
+import com.example.data.local.dao.AttendanceDao
+import com.example.data.local.dao.MarksDao
 import com.example.data.local.entity.*
 import com.example.data.repository.HolisticRepository
 import com.example.data.repository.StudentRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class HolisticViewModel(
     private val holisticRepository: HolisticRepository,
     private val studentRepository: StudentRepository,
-    private val academicYearRepository: com.example.data.repository.AcademicYearRepository? = null
+    private val academicYearRepository: com.example.data.repository.AcademicYearRepository? = null,
+    private val marksDao: MarksDao? = null,
+    private val attendanceDao: AttendanceDao? = null,
+    private val assessmentDao: AssessmentDao? = null
 ) : ViewModel() {
 
     // Filter Controls
@@ -289,6 +296,175 @@ class HolisticViewModel(
         val current = sgiRatings.value.toMutableMap()
         current[sgiCategoryId] = stars
         sgiRatings.value = current
+    }
+
+    /**
+     * Generates factual, individual-specific teacher observations and remarks
+     * based on student's actual Academic performance, Holistic HCM ratings, and Attendance records.
+     */
+    fun generatePersonalizedTeacherComments() {
+        val student = selectedStudent.value ?: return
+        val period = selectedPeriod.value
+        val year = academicYear.value
+
+        viewModelScope.launch {
+            try {
+                // 1. Fetch Academic Marks for this student in this academic year
+                val studentMarks = marksDao?.getMarksForStudent(student.id)?.firstOrNull() ?: emptyList()
+                val assessments = assessmentDao?.getAssessmentsByAcademicYear(year)?.firstOrNull() ?: emptyList()
+
+                // Filter assessments matching this period/month or matching student grade
+                val periodAssessmentIds = assessments
+                    .filter { it.month.equals(period, ignoreCase = true) || it.assessmentName.contains(period, ignoreCase = true) }
+                    .map { it.id }
+                    .toSet()
+
+                val relevantMarks = if (periodAssessmentIds.isNotEmpty()) {
+                    studentMarks.filter { it.assessmentId in periodAssessmentIds && it.obtainedMarks != null }
+                } else {
+                    studentMarks.filter { it.obtainedMarks != null }
+                }
+
+                val distinctionSubjects = relevantMarks.filter { it.isDistinction || ((it.obtainedMarks ?: 0.0) >= it.distinctionMark) }
+                val passSubjects = relevantMarks.filter { (it.obtainedMarks ?: 0.0) >= it.passMark && !it.isDistinction && ((it.obtainedMarks ?: 0.0) < it.distinctionMark) }
+                val failSubjects = relevantMarks.filter { (it.obtainedMarks ?: 0.0) < it.passMark }
+
+                val avgMarks = if (relevantMarks.isNotEmpty()) {
+                    relevantMarks.mapNotNull { it.obtainedMarks }.average().roundToInt()
+                } else 0
+
+                // 2. Fetch Holistic HCM Ratings from current in-memory / evaluated state
+                val enabledHolistic = enabledHolisticCategoriesForLevel.value
+                val ratedCategories = enabledHolistic.map { cat ->
+                    val stars = holisticRatings.value[cat.id] ?: 0
+                    cat to stars
+                }
+
+                val highRatedCategories = ratedCategories.filter { it.second >= 4 }.map { it.first }
+                val lowRatedCategories = ratedCategories.filter { it.second in 1..2 }.map { it.first }
+                val midRatedCategories = ratedCategories.filter { it.second == 3 }.map { it.first }
+
+                val honestyStars = ratedCategories.filter { it.first.pillar.equals("HONESTY", ignoreCase = true) }.map { it.second }
+                val curiosityStars = ratedCategories.filter { it.first.pillar.equals("CURIOSITY", ignoreCase = true) }.map { it.second }
+                val mindfulnessStars = ratedCategories.filter { it.first.pillar.equals("MINDFULNESS", ignoreCase = true) }.map { it.second }
+
+                val honestyAvg = if (honestyStars.isNotEmpty()) honestyStars.average() else 0.0
+                val curiosityAvg = if (curiosityStars.isNotEmpty()) curiosityStars.average() else 0.0
+                val mindfulnessAvg = if (mindfulnessStars.isNotEmpty()) mindfulnessStars.average() else 0.0
+
+                // 3. Fetch Attendance
+                val attendanceRecords = attendanceDao?.getAttendanceForStudent(student.id, year)?.firstOrNull() ?: emptyList()
+                val monthRecords = attendanceRecords.filter { it.month.equals(period, ignoreCase = true) }
+                val activeRecords = if (monthRecords.isNotEmpty()) monthRecords else attendanceRecords
+
+                val totalAttendanceDays = activeRecords.size
+                val presentDays = activeRecords.count { it.status == AttendanceStatus.PRESENT }
+                val absentDays = activeRecords.count { it.status == AttendanceStatus.ABSENT }
+                val lateDays = activeRecords.count { it.status == AttendanceStatus.LATE }
+                val attendanceRate = if (totalAttendanceDays > 0) ((presentDays.toDouble() / totalAttendanceDays) * 100).roundToInt() else 100
+
+                // === BUILD POSITIVE STRENGTHS ===
+                val positiveParts = mutableListOf<String>()
+
+                if (distinctionSubjects.isNotEmpty()) {
+                    val distNames = distinctionSubjects.take(3).joinToString("၊ ") {
+                        val markInt = it.obtainedMarks?.roundToInt() ?: 0
+                        "${it.subjectName} (${markInt} မှတ်)"
+                    }
+                    positiveParts.add("$distNames တို့တွင် Distinction ဂုဏ်ထူးအမှတ်များဖြင့် ထူးချွန်စွာ အောင်မြင်ထားပါသည်။")
+                } else if (relevantMarks.isNotEmpty() && failSubjects.isEmpty()) {
+                    positiveParts.add("စာမေးပွဲတွင် ဘာသာရပ်အားလုံးကို ပျမ်းမျှ $avgMarks မှတ်ဖြင့် အောင်မြင်စွာ ဖြေဆိုထားပါသည်။")
+                }
+
+                if (highRatedCategories.isNotEmpty()) {
+                    val highNames = highRatedCategories.take(2).joinToString("၊ ") { it.categoryName }
+                    positiveParts.add("$highNames စသည့် အပြုအမူကောင်းများတွင် စံပြဖြစ်ပြီး စိတ်အားထက်သန်မှု ကောင်းမွန်ပါသည်။")
+                } else {
+                    val highestPillar = when {
+                        honestyAvg >= curiosityAvg && honestyAvg >= mindfulnessAvg && honestyAvg > 0 -> "ရိုးသားဖြောင့်မတ်မှု (Honesty)"
+                        curiosityAvg >= honestyAvg && curiosityAvg >= mindfulnessAvg && curiosityAvg > 0 -> "စူးစမ်းလေ့လာလိုစိတ် (Curiosity)"
+                        mindfulnessAvg > 0 -> "သတိတရားနှင့် ကိုယ်ကျင့်တရား (Mindfulness)"
+                        else -> null
+                    }
+                    if (highestPillar != null) {
+                        positiveParts.add("အထူးသဖြင့် $highestPillar ပိုင်းတွင် အလေ့အကျင့်ကောင်းများ ပိုင်ဆိုင်ထားပါသည်။")
+                    }
+                }
+
+                if (totalAttendanceDays > 0) {
+                    if (attendanceRate >= 95 && absentDays == 0) {
+                        positiveParts.add("ကျောင်းခေါ်ချိန် ($attendanceRate%) ပြည့်မီပြီး ပျက်ကွက်ရက်မရှိ ကျောင်းမှန်မှန် တက်ရောက်ပါသည်။")
+                    } else if (attendanceRate >= 90) {
+                        positiveParts.add("ကျောင်းခေါ်ချိန် ($attendanceRate%) ကောင်းမွန်စွာ ရှိပါသည်။")
+                    }
+                }
+
+                if (positiveParts.isEmpty()) {
+                    positiveParts.add("စာသင်ခန်းတွင်း လှုပ်ရှားမှုများတွင် ပုံမှန်ပါဝင်ပြီး တိုးတက်ရန် ကြိုးစားအားထုတ်လိုစိတ် ရှိပါသည်။")
+                }
+
+                // === BUILD AREAS FOR IMPROVEMENT ===
+                val improvementParts = mutableListOf<String>()
+
+                if (failSubjects.isNotEmpty()) {
+                    val failNames = failSubjects.take(3).joinToString("၊ ") {
+                        val markInt = it.obtainedMarks?.roundToInt() ?: 0
+                        "${it.subjectName} (${markInt} မှတ်)"
+                    }
+                    improvementParts.add("$failNames ဘာသာရပ်တို့တွင် အမှတ်နည်းနေသဖြင့် (ရမှတ် ၄၀ အောက်) အခြေခံသဘောတရားများနှင့် အိမ်စာလေ့ကျင့်ခန်းများကို အချိန်ပိုပေး၍ အနီးကပ် ပြန်လည်ကုစား သင်ကြားပေးရန် လိုအပ်ပါသည်။")
+                } else if (passSubjects.any { (it.obtainedMarks ?: 0.0) < 60 }) {
+                    val weakPassNames = passSubjects.filter { (it.obtainedMarks ?: 0.0) < 60 }.take(2).joinToString("၊ ") { "${it.subjectName} (${it.obtainedMarks?.roundToInt()} မှတ်)" }
+                    improvementParts.add("$weakPassNames ဘာသာရပ်တို့တွင် အမှတ်အနည်းငယ် လျော့နည်းနေသဖြင့် ပိုမိုအာရုံစိုက် လေ့ကျင့်သင့်ပါသည်။")
+                }
+
+                if (lowRatedCategories.isNotEmpty()) {
+                    val lowNames = lowRatedCategories.take(2).joinToString("၊ ") { it.categoryName }
+                    improvementParts.add("$lowNames ပိုင်းတွင် အာရုံမပျံ့လွင့်စေရန်နှင့် စည်းကမ်းတကျ လိုက်နာတတ်စေရန် သတိပြု ထိန်းကျောင်းပေးရန် လိုအပ်ပါသည်။")
+                } else if (midRatedCategories.isNotEmpty()) {
+                    val midNames = midRatedCategories.take(1).joinToString("၊ ") { it.categoryName }
+                    improvementParts.add("$midNames အလေ့အကျင့်ကို ပိုမိုကောင်းမွန်လာအောင် ဆက်လက် အားပေးသင့်ပါသည်။")
+                }
+
+                if (absentDays > 0) {
+                    improvementParts.add("ကျောင်း $absentDays ရက် ပျက်ကွက်ခဲ့သဖြင့် (တက်ရောက်မှု $attendanceRate%) သင်ခန်းစာများ မလွတ်စေရန် ကျောင်းခေါ်ချိန်ကို ပိုမိုဂရုပြု တက်ရောက်စေလိုပါသည်။")
+                }
+                if (lateDays > 0) {
+                    improvementParts.add("ကျောင်းသို့ အချိန်မီရောက်ရှိစေရန် မနက်စောစော လာရောက်ဖို့ သတိပေးလိုပါသည်။")
+                }
+
+                if (improvementParts.isEmpty()) {
+                    improvementParts.add("လက်ရှိ ထူးချွန်သော ရလဒ်ကောင်းများကို ဆက်လက်ထိန်းသိမ်းပြီး ပိုမိုခက်ခဲသော စိန်ခေါ်မှုများနှင့် ဗဟုသုတများကို ရှာဖွေလေ့လာနိုင်ရန် တိုက်တွန်းပါသည်။")
+                }
+
+                // === BUILD GENERAL REMARK / FEEDBACK ===
+                val isHighAcademic = distinctionSubjects.size >= 2 || (relevantMarks.isNotEmpty() && avgMarks >= 75)
+                val isLowAcademic = failSubjects.isNotEmpty() || (relevantMarks.isNotEmpty() && avgMarks < 50)
+                val isHighHcm = (honestyAvg >= 4.0 || curiosityAvg >= 4.0 || mindfulnessAvg >= 4.0) && lowRatedCategories.isEmpty()
+                val isLowHcm = lowRatedCategories.size >= 2 || (honestyAvg < 2.5 && curiosityAvg < 2.5 && mindfulnessAvg < 2.5 && ratedCategories.any { it.second > 0 })
+
+                val generalText = when {
+                    isHighAcademic && isHighHcm ->
+                        "${student.name} သည် ပညာရည်ထူးချွန်ပြီး ကိုယ်ကျင့်တရားနှင့် စည်းကမ်းပိုင်းတွင်ပါ စံပြဖြစ်သော ကျောင်းသားကောင်းတစ်ဦး ဖြစ်ပါသည်။ ယခုကြိုးစားမှုအရှိန်ကို ဆက်လက်ထိန်းသိမ်းပါက ပိုမိုထင်ရှားစွာ အောင်မြင်ပါမည်။"
+                    isHighAcademic && !isHighHcm ->
+                        "ပညာရည်ထူးချွန်သော်လည်း စာသင်ခန်းတွင်း စိတ်ရှည်သည်းခံမှုနှင့် အဖွဲ့လိုက် ပူးပေါင်းဆောင်ရွက်မှုကို ပိုမိုမြှင့်တင်ပေးရန် လိုအပ်ပါသည်။ ဆရာနှင့် မိဘ အတူတကွ ပံ့ပိုးပေးသင့်ပါသည်။"
+                    !isHighAcademic && isHighHcm ->
+                        "စိတ်သဘောထား ဖြောင့်မတ်ပြီး အလေ့အကျင့်ကောင်းများ ပိုင်ဆိုင်ထားသော ကျောင်းသား ဖြစ်ပါသည်။ အားနည်းနေသော စာများကို မိဘဆရာ ပူးပေါင်း၍ အနီးကပ် တွန်းအားပေးပါက သိသာစွာ တိုးတက်လာမည့် အလားအလာ ကောင်းမွန်ပါသည်။"
+                    isLowAcademic && isLowHcm ->
+                        "သင်ခန်းစာများနှင့် စည်းကမ်းပိုင်းတွင် ပိုမိုအာရုံစိုက်လာစေရန် မိဘနှင့် ဆရာ နီးကပ်စွာ တိုင်ပင်ဆွေးနွေးပြီး အပြုသဘောဆောင်သော ပံ့ပိုးကူညီမှုများ နေ့စဉ် ပြုလုပ်ပေးရန် လိုအပ်ပါသည်။"
+                    else ->
+                        "လစဉ် တိုးတက်မှု အလားအလာ ကောင်းမွန်နေပြီး စာကျက်ချိန်နှင့် လေ့ကျင့်ခန်းများကို စနစ်တကျ လုပ်ဆောင်သွားပါက ပိုမိုကောင်းမွန်သော ရလဒ်များ ရရှိလာမည် ဖြစ်ပါသည်။"
+                }
+
+                // Populate directly into mutable state flows so teacher can view & edit
+                positiveComments.value = positiveParts.joinToString(" ")
+                areasForImprovement.value = improvementParts.joinToString(" ")
+                generalComment.value = generalText
+
+                statusMessage.value = "Auto-generated personalized remarks for ${student.name} based on Academic, HCM & Attendance!"
+            } catch (e: Exception) {
+                statusMessage.value = "Error generating comments: ${e.message}"
+            }
+        }
     }
 
     fun saveCurrentStudentAssessment(updatedBy: String) {
@@ -603,12 +779,22 @@ class HolisticViewModel(
 class HolisticViewModelFactory(
     private val holisticRepository: HolisticRepository,
     private val studentRepository: StudentRepository,
-    private val academicYearRepository: com.example.data.repository.AcademicYearRepository? = null
+    private val academicYearRepository: com.example.data.repository.AcademicYearRepository? = null,
+    private val marksDao: MarksDao? = null,
+    private val attendanceDao: AttendanceDao? = null,
+    private val assessmentDao: AssessmentDao? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(HolisticViewModel::class.java)) {
-            return HolisticViewModel(holisticRepository, studentRepository, academicYearRepository) as T
+            return HolisticViewModel(
+                holisticRepository,
+                studentRepository,
+                academicYearRepository,
+                marksDao,
+                attendanceDao,
+                assessmentDao
+            ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

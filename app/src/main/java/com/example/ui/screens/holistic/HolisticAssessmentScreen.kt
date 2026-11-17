@@ -461,32 +461,46 @@ fun HolisticAssessmentScreen(
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 itemsInPillar.forEachIndexed { idx, cat ->
                                                     val currentRating = holisticRatings[cat.id] ?: 0
-                                                    Row(
+                                                    Column(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .padding(vertical = 4.dp, horizontal = 4.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                                     ) {
                                                         Text(
                                                             text = "${idx + 1}။ ${cat.categoryName}",
                                                             fontSize = 13.sp,
                                                             fontWeight = FontWeight.Medium,
                                                             color = MaterialTheme.colorScheme.onSurface,
-                                                            modifier = Modifier.weight(1f)
+                                                            modifier = Modifier.fillMaxWidth()
                                                         )
 
-                                                        StarRatingWidget(
-                                                            currentRating = currentRating,
-                                                            maxStars = cat.maxStars,
-                                                            onRatingSelected = { stars ->
-                                                                if (canEdit && !isLocked) {
-                                                                    holisticViewModel.updateHolisticRating(cat.id, stars)
-                                                                }
-                                                            },
-                                                            starSize = 22.dp,
-                                                            readOnly = !canEdit || isLocked
-                                                        )
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            StarRatingWidget(
+                                                                currentRating = currentRating,
+                                                                maxStars = cat.maxStars,
+                                                                onRatingSelected = { stars ->
+                                                                    if (canEdit && !isLocked) {
+                                                                        holisticViewModel.updateHolisticRating(cat.id, stars)
+                                                                    }
+                                                                },
+                                                                starSize = 26.dp,
+                                                                readOnly = !canEdit || isLocked
+                                                            )
+
+                                                            if (currentRating > 0) {
+                                                                Text(
+                                                                    text = "$currentRating / ${cat.maxStars} ⭐",
+                                                                    fontSize = 12.sp,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = MaterialTheme.colorScheme.primary
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                                                 }
@@ -508,12 +522,30 @@ fun HolisticAssessmentScreen(
                                         modifier = Modifier.padding(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text(
-                                            text = "Teacher Comments & Remarks",
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Teacher Comments & Remarks",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+
+                                            if (canEdit && !isLocked) {
+                                                FilledTonalButton(
+                                                    onClick = { holisticViewModel.generatePersonalizedTeacherComments() },
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Auto Generate", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
 
                                         OutlinedTextField(
                                             value = positiveComments,
