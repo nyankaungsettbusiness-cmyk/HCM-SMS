@@ -23,7 +23,7 @@ interface AttendanceDao {
     @Query("UPDATE attendance_records SET isDirty = 0, uuid = :uuid WHERE id = :id")
     suspend fun markAttendanceRecordSynced(id: Long, uuid: String)
 
-    @Query("SELECT * FROM attendance_records WHERE academicYear = :academicYear AND date = :date AND session = :session AND grade = :grade AND className = :className")
+    @Query("SELECT * FROM attendance_records WHERE academicYear = :academicYear AND date = :date AND session = :session AND grade = :grade AND (:className = 'All' OR className = :className)")
     fun getAttendanceForSession(
         academicYear: String,
         date: String,
@@ -41,16 +41,16 @@ interface AttendanceDao {
     @Query("SELECT * FROM attendance_records WHERE date = :date ORDER BY recordedDateTime DESC")
     fun getAttendanceForDate(date: String): Flow<List<AttendanceRecordEntity>>
 
-    @Query("SELECT * FROM attendance_records WHERE academicYear = :academicYear AND grade = :grade AND className = :className")
+    @Query("SELECT * FROM attendance_records WHERE academicYear = :academicYear AND grade = :grade AND (:className = 'All' OR className = :className)")
     fun getAttendanceForClass(academicYear: String, grade: String, className: String): Flow<List<AttendanceRecordEntity>>
 
-    @Query("SELECT * FROM attendance_records WHERE academicYear = :academicYear AND grade = :grade AND className = :className AND date LIKE :datePrefix || '%'")
+    @Query("SELECT * FROM attendance_records WHERE academicYear = :academicYear AND grade = :grade AND (:className = 'All' OR className = :className) AND date LIKE :datePrefix || '%'")
     fun getAttendanceForClassMonth(academicYear: String, grade: String, className: String, datePrefix: String): Flow<List<AttendanceRecordEntity>>
 
-    @Query("DELETE FROM attendance_records WHERE academicYear = :academicYear AND grade = :grade AND className = :className AND date LIKE :datePrefix || '%'")
+    @Query("DELETE FROM attendance_records WHERE academicYear = :academicYear AND grade = :grade AND (:className = 'All' OR className = :className) AND date LIKE :datePrefix || '%'")
     suspend fun deleteAttendanceForClassMonth(academicYear: String, grade: String, className: String, datePrefix: String)
 
-    @Query("DELETE FROM attendance_records WHERE academicYear = :academicYear AND date = :date AND session = :session AND grade = :grade AND className = :className")
+    @Query("DELETE FROM attendance_records WHERE academicYear = :academicYear AND date = :date AND session = :session AND grade = :grade AND (:className = 'All' OR className = :className)")
     suspend fun resetSessionAttendance(
         academicYear: String,
         date: String,

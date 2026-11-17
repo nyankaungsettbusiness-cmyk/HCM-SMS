@@ -1580,7 +1580,8 @@ data class AttendanceRecordSupabaseDto(
         existingLocalId: Long = 0,
         resolvedStudentId: Long = studentId,
         studentCode: String = "",
-        studentName: String = ""
+        studentName: String = "",
+        resolvedClassName: String = className
     ): AttendanceRecordEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val parsedRecTime = parseIsoToMillis(recordedDateTime)
@@ -1595,7 +1596,7 @@ data class AttendanceRecordSupabaseDto(
             studentCode = studentCode,
             studentName = studentName,
             grade = grade,
-            className = className,
+            className = resolvedClassName,
             status = parsedStatus,
             recordedBy = recordedBy,
             recordedDateTime = if (parsedRecTime > 0) parsedRecTime else System.currentTimeMillis(),

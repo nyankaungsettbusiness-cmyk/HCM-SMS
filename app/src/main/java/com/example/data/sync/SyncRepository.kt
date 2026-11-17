@@ -3087,13 +3087,19 @@ class SyncRepository(
                 val resolvedStudentId = localStudent?.id ?: remoteDto.studentId
                 val studentCode = localStudent?.studentCode ?: existingLocal?.studentCode ?: ""
                 val studentName = localStudent?.name ?: existingLocal?.studentName ?: ""
+                val resolvedClass = if (remoteDto.className.isBlank() || remoteDto.className == "All") {
+                    localStudent?.className?.ifBlank { "A" } ?: existingLocal?.className ?: remoteDto.className
+                } else {
+                    remoteDto.className
+                }
 
                 if (existingLocal != null) {
                     val remoteEntity = remoteDto.toEntity(
                         existingLocalId = existingLocal.id,
                         resolvedStudentId = resolvedStudentId,
                         studentCode = studentCode,
-                        studentName = studentName
+                        studentName = studentName,
+                        resolvedClassName = resolvedClass
                     )
                     if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
                         dao.insertOrUpdateRecord(remoteEntity)
@@ -3103,7 +3109,8 @@ class SyncRepository(
                     val newEntity = remoteDto.toEntity(
                         resolvedStudentId = resolvedStudentId,
                         studentCode = studentCode,
-                        studentName = studentName
+                        studentName = studentName,
+                        resolvedClassName = resolvedClass
                     )
                     dao.insertOrUpdateRecord(newEntity)
                     pulled++

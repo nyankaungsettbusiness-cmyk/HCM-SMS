@@ -72,6 +72,7 @@ class AttendanceViewModel(
 
     private val _monthlySchoolDays = MutableStateFlow(20)
     val monthlySchoolDays: StateFlow<Int> = _monthlySchoolDays.asStateFlow()
+    private val _monthSchoolDaysMap = MutableStateFlow<Map<String, Int>>(emptyMap())
 
     private val _monthlyEdits = MutableStateFlow<Map<Long, MonthlyStudentAttendanceInput>>(emptyMap())
     val monthlyEdits: StateFlow<Map<Long, MonthlyStudentAttendanceInput>> = _monthlyEdits.asStateFlow()
@@ -272,17 +273,20 @@ class AttendanceViewModel(
             } else {
                 val studentRecs = recordsByStudent[student.id]
                 if (!studentRecs.isNullOrEmpty()) {
+                    val savedTotalDays = studentRecs.map { it.date }.distinct().size.coerceAtLeast(1).toDouble()
+                    val targetTotalDays = if (edits.isEmpty() && savedTotalDays > 0) savedTotalDays else dSchoolDays
+
                     val pCount = studentRecs.count { it.status == AttendanceStatus.PRESENT }
                     val lCount = studentRecs.count { it.status == AttendanceStatus.LEAVE }
-                    val pDays = (pCount / 2.0).coerceAtMost(dSchoolDays)
-                    val lDays = (lCount / 2.0).coerceAtMost(dSchoolDays)
-                    val aDays = (dSchoolDays - pDays - lDays).coerceAtLeast(0.0)
+                    val pDays = (pCount / 2.0).coerceAtMost(targetTotalDays)
+                    val lDays = (lCount / 2.0).coerceAtMost((targetTotalDays - pDays).coerceAtLeast(0.0))
+                    val aDays = (targetTotalDays - pDays - lDays).coerceAtLeast(0.0)
 
                     MonthlyStudentAttendanceInput(
                         studentId = student.id,
                         studentCode = student.studentCode,
                         studentName = student.name,
-                        totalDays = dSchoolDays,
+                        totalDays = targetTotalDays,
                         presentDays = pDays,
                         absentDays = aDays,
                         leaveDays = lDays
@@ -305,6 +309,22 @@ class AttendanceViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    init {
+        viewModelScope.launch {
+            monthlyRecordsForClass.collect { records ->
+                if (records.isNotEmpty()) {
+                    val distinctDays = records.map { it.date }.distinct().size
+                    if (distinctDays > 0) {
+                        _monthSchoolDaysMap.value = _monthSchoolDaysMap.value + (_selectedMonth.value to distinctDays)
+                        if (_monthlyEdits.value.isEmpty()) {
+                            _monthlySchoolDays.value = distinctDays
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Student summary history
     val selectedStudentHistorySummary: StateFlow<StudentAttendanceSummary?> = combine(
@@ -403,6 +423,13 @@ class AttendanceViewModel(
             val recordsToSave = students.map { student ->
                 val status = edits[student.id] ?: savedRecordsMap[student.id]?.status ?: AttendanceStatus.PRESENT
                 val existingId = savedRecordsMap[student.id]?.id ?: 0L
+                val studentClass = if (student.className.isNotBlank() && student.className != "All") {
+                    student.className
+                } else if (cl != "All") {
+                    cl
+                } else {
+                    "A"
+                }
 
                 AttendanceRecordEntity(
                     id = existingId,
@@ -413,7 +440,7 @@ class AttendanceViewModel(
                     studentCode = student.studentCode,
                     studentName = student.name,
                     grade = gr,
-                    className = cl,
+                    className = studentClass,
                     status = status,
                     recordedBy = recordedBy.ifEmpty { "Teacher" },
                     recordedDateTime = System.currentTimeMillis()
@@ -439,11 +466,14 @@ class AttendanceViewModel(
     fun setSelectedMonth(month: String) {
         _selectedMonth.value = month
         _monthlyEdits.value = emptyMap()
+        val days = _monthSchoolDaysMap.value[month] ?: 20
+        _monthlySchoolDays.value = days
     }
 
     fun setMonthlySchoolDays(days: Int) {
         val safeDays = days.coerceAtLeast(1)
         _monthlySchoolDays.value = safeDays
+        _monthSchoolDaysMap.value = _monthSchoolDaysMap.value + (_selectedMonth.value to safeDays)
         val currentEdits = _monthlyEdits.value.toMutableMap()
         for ((sId, input) in currentEdits) {
             val newPresent = input.presentDays.coerceAtMost(safeDays.toDouble())
@@ -517,6 +547,7 @@ class AttendanceViewModel(
                 recordedBy = recordedBy.ifEmpty { "Teacher" }
             )
 
+            _monthSchoolDaysMap.value = _monthSchoolDaysMap.value + (mo to days)
             _monthlyEdits.value = emptyMap()
             _isSaving.value = false
             _statusMessage.value = "Successfully saved monthly attendance for $gr-$cl ($mo) for ${inputs.size} students!"

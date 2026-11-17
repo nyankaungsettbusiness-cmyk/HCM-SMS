@@ -181,6 +181,15 @@ class AttendanceRepository(
         val now = System.currentTimeMillis()
 
         for (input in inputs) {
+            val studentObj = studentDao.getStudentById(input.studentId)
+            val studentClass = if (studentObj != null && studentObj.className.isNotBlank() && studentObj.className != "All") {
+                studentObj.className
+            } else if (className != "All") {
+                className
+            } else {
+                studentObj?.className ?: "A"
+            }
+
             val totalSessions = (schoolDays * 2).coerceAtLeast(0)
             val presentSessions = (input.presentDays * 2.0).roundToInt().coerceIn(0, totalSessions)
             val leaveSessions = (input.leaveDays * 2.0).roundToInt().coerceIn(0, totalSessions - presentSessions)
@@ -212,7 +221,7 @@ class AttendanceRepository(
                             studentCode = input.studentCode,
                             studentName = input.studentName,
                             grade = grade,
-                            className = className,
+                            className = studentClass,
                             status = status,
                             recordedBy = recordedBy,
                             recordedDateTime = now,
