@@ -354,7 +354,15 @@ class HolisticViewModel(
 
                 // 3. Fetch Attendance
                 val attendanceRecords = attendanceDao?.getAttendanceForStudent(student.id, year)?.firstOrNull() ?: emptyList()
-                val monthRecords = attendanceRecords.filter { it.month.equals(period, ignoreCase = true) }
+                val monthNum = when (period.lowercase()) {
+                    "june" -> "06"; "july" -> "07"; "august" -> "08"; "september" -> "09"
+                    "october" -> "10"; "november" -> "11"; "december" -> "12"
+                    "january" -> "01"; "february" -> "02"; "march" -> "03"; "april" -> "04"; "may" -> "05"
+                    else -> ""
+                }
+                val monthRecords = if (monthNum.isNotBlank()) {
+                    attendanceRecords.filter { it.date.contains("-$monthNum-") }
+                } else emptyList()
                 val activeRecords = if (monthRecords.isNotEmpty()) monthRecords else attendanceRecords
 
                 val totalAttendanceDays = activeRecords.size
