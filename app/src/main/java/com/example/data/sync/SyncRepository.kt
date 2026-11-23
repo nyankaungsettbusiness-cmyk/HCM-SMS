@@ -306,21 +306,21 @@ class SyncRepository(
                 val dirtyMarks = marksDao?.getDirtyMarksCount() ?: 0
                 if (dirtyMarks == 0) break
                 onProgress("အမှတ်များ Cloud သို့ တင်ပို့နေသည် (ကျန်ရှိ: $dirtyMarks ခု)...")
-                val (pMarks, _) = syncStudentMarksInternal(client)
+                val (pMarks, _) = syncStudentMarksInternal(client, pushOnly = true)
                 totalMarksPushed += pMarks
                 if (pMarks <= 0) break
             }
-            val (pResults, _) = syncAssessmentResultsInternal(client)
+            val (pResults, _) = syncAssessmentResultsInternal(client, pushOnly = true)
             totalPushed += totalMarksPushed + pResults
 
             // 6. Holistic & Well-being: Holistic, SGI, Comments, Attendance, Promotion
             onProgress("Holistic စစ်ဆေးမှုနှင့် ခွင့်/ပျက် စာရင်းများ Cloud သို့ ပို့နေသည်...")
             val (pHolCat, _) = syncHolisticCategoriesInternal(client)
-            val (pHolRes, _) = syncHolisticResultsInternal(client)
+            val (pHolRes, _) = syncHolisticResultsInternal(client, pushOnly = true)
             val (pSgiCat, _) = syncSgiCategoriesInternal(client)
             val (pSgiRes, _) = syncSgiResultsInternal(client)
             val (pComments, _) = syncTeacherCommentsInternal(client)
-            val (pAttendance, _) = syncAttendanceInternal(client)
+            val (pAttendance, _) = syncAttendanceInternal(client, pushOnly = true)
             val (pPromotion, _) = syncPromotionHistoryInternal(client)
             totalPushed += pHolCat + pHolRes + pSgiCat + pSgiRes + pComments + pAttendance + pPromotion
 
@@ -2175,32 +2175,9 @@ class SyncRepository(
         return Pair(pushed, pulled)
     }
 
-    private suspend fun syncStudentMarksInternal(client: SupabaseClient): Pair<Int, Int> {
+    private suspend fun syncStudentMarksInternal(client: SupabaseClient, pushOnly: Boolean = false): Pair<Int, Int> {
         val dao = marksDao ?: return Pair(0, 0)
         var pushed = 0; var pulled = 0
-
-        val allRemoteMarks = fetchAllRemotePaged<StudentMarkSupabaseDto>(client, "student_marks", 1000L)
-        val remoteMap = allRemoteMarks.associateBy { it.uuid }
-
-        val allLocalMarks = dao.getAllMarksSync()
-        if (allLocalMarks.isNotEmpty() && remoteMap.isEmpty()) {
-            Log.i(TAG, "Self-healing triggered: Remote student_marks is empty (${remoteMap.size}) while local has ${allLocalMarks.size} records. Re-marking all local marks as dirty for cloud push.")
-            dao.markAllMarksDirty()
-        } else if (allLocalMarks.isNotEmpty()) {
-            // Targeted self-healing: only re-mark specific local marks as dirty if their remote counterpart exists with missing/generic subject_name
-            val incompleteRemoteUuids = remoteMap.values
-                .filter { it.subjectName.isNullOrBlank() || it.subjectName == "All Subjects" }
-                .map { it.uuid }
-                .toSet()
-
-            if (incompleteRemoteUuids.isNotEmpty()) {
-                val toFix = allLocalMarks.filter { it.uuid in incompleteRemoteUuids && !it.isDirty && it.subjectName.isNotBlank() && it.subjectName != "All Subjects" }
-                if (toFix.isNotEmpty()) {
-                    Log.i(TAG, "Targeted self-healing: Marking ${toFix.size} local marks dirty to repair incomplete remote subjects.")
-                    toFix.forEach { dao.insertOrUpdateMark(it.copy(isDirty = true)) }
-                }
-            }
-        }
 
         // Pre-fetch remote students and assessments once to eliminate hundreds of sequential network calls
         val remoteStudentsList = try {
@@ -2337,8 +2314,35 @@ class SyncRepository(
             }
         }
 
-        // PULL SIDE: High-Speed In-Memory Matching & Atomic Room Batch Insertion
+        if (pushOnly) {
+            return Pair(pushed, 0)
+        }
+
+        // PULL SIDE: High-Speed In-Memory Matching & Atomic Room Batch Insertion (Free-Tier Safe Delta Pull)
         try {
+            val currentLocalMarks = dao.getAllMarksSync()
+            val allRemoteMarks = if (currentLocalMarks.isEmpty()) {
+                // Initial load: pull all remote records
+                fetchAllRemotePaged<StudentMarkSupabaseDto>(client, "student_marks", 1000L)
+            } else {
+                // Delta pull: only pull records modified in the last 7 days to eliminate bandwidth usage
+                val latestLocalMillis = currentLocalMarks.maxOfOrNull { it.updatedAt } ?: 0L
+                val cutoffMillis = if (latestLocalMillis > 0L) {
+                    maxOf(0L, latestLocalMillis - (7L * 24L * 60L * 60L * 1000L))
+                } else 0L
+                val cutoffIso = millisToIso(cutoffMillis)
+                try {
+                    client.from("student_marks").select {
+                        filter { gt("updated_at", cutoffIso) }
+                    }.decodeList<StudentMarkSupabaseDto>()
+                } catch (filterEx: Exception) {
+                    Log.w(TAG, "Delta pull student_marks failed: ${filterEx.message}, fallback to recent 500")
+                    client.from("student_marks").select {
+                        range(0, 499)
+                    }.decodeList<StudentMarkSupabaseDto>()
+                }
+            }
+
             val allLocalStudents = studentDao.getAllStudentsList()
             val studentByCode = allLocalStudents.filter { it.studentCode.isNotBlank() }
                 .associateBy { it.studentCode.trim().uppercase() }
@@ -2357,7 +2361,6 @@ class SyncRepository(
                 "${it.grade.trim().uppercase()}_${it.month.trim().uppercase()}"
             }
 
-            val currentLocalMarks = dao.getAllMarksSync()
             val localMarkByUuid = currentLocalMarks.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
             val localMarkByKey = currentLocalMarks.associateBy {
                 "${it.assessmentId}_${it.studentId}_${it.subjectName.trim().uppercase()}"
@@ -2466,12 +2469,9 @@ class SyncRepository(
         return Pair(pushed, pulled)
     }
 
-    private suspend fun syncAssessmentResultsInternal(client: SupabaseClient): Pair<Int, Int> {
+    private suspend fun syncAssessmentResultsInternal(client: SupabaseClient, pushOnly: Boolean = false): Pair<Int, Int> {
         val dao = marksDao ?: return Pair(0, 0)
         var pushed = 0; var pulled = 0
-
-        val allRemoteResults = fetchAllRemotePaged<AssessmentResultSupabaseDto>(client, "assessment_results", 1000L)
-        val remoteMap = allRemoteResults.associateBy { it.uuid }
 
         val failedIdsThisRun = mutableSetOf<Long>()
 
@@ -2541,10 +2541,15 @@ class SyncRepository(
             }
         }
 
+        if (pushOnly) {
+            return Pair(pushed, 0)
+        }
+
         val localAssessmentCache = mutableMapOf<Long, Long>()
         val localStudentCache = mutableMapOf<Long, Long>()
 
         try {
+            val allRemoteResults = fetchAllRemotePaged<AssessmentResultSupabaseDto>(client, "assessment_results", 1000L)
             val remotes = allRemoteResults
             val pulledSummaries = mutableListOf<AssessmentResultSummaryEntity>()
 
@@ -2698,12 +2703,9 @@ class SyncRepository(
         return Pair(pushed, pulled)
     }
 
-    private suspend fun syncHolisticResultsInternal(client: SupabaseClient): Pair<Int, Int> {
+    private suspend fun syncHolisticResultsInternal(client: SupabaseClient, pushOnly: Boolean = false): Pair<Int, Int> {
         val dao = holisticDao ?: return Pair(0, 0)
         var pushed = 0; var pulled = 0
-
-        val allRemoteHolistic = fetchAllRemotePaged<HolisticResultSupabaseDto>(client, "holistic_results", 1000L)
-        val remoteMap = allRemoteHolistic.associateBy { it.uuid }
 
         while (true) {
             val unsynced = dao.getHolisticResultsForSync(limit = 300)
@@ -2738,7 +2740,12 @@ class SyncRepository(
             if (batchProcessed == 0) break
         }
 
+        if (pushOnly) {
+            return Pair(pushed, 0)
+        }
+
         try {
+            val allRemoteHolistic = fetchAllRemotePaged<HolisticResultSupabaseDto>(client, "holistic_results", 1000L)
             val remotes = allRemoteHolistic
             for (remoteDto in remotes) {
                 val existingLocal = if (remoteDto.uuid.isNotBlank()) dao.getHolisticResultByUuid(remoteDto.uuid) else null
@@ -2963,18 +2970,9 @@ class SyncRepository(
         return Pair(pushed, pulled)
     }
 
-    private suspend fun syncAttendanceInternal(client: SupabaseClient): Pair<Int, Int> {
+    private suspend fun syncAttendanceInternal(client: SupabaseClient, pushOnly: Boolean = false): Pair<Int, Int> {
         val dao = attendanceDao ?: return Pair(0, 0)
         var pushed = 0; var pulled = 0
-
-        val allRemoteAttendance = fetchAllRemotePaged<AttendanceRecordSupabaseDto>(client, "attendance_records", 1000L)
-        val remoteMap = allRemoteAttendance.associateBy { it.uuid }
-
-        val allLocalAttendance = dao.getAllAttendanceRecordsSync()
-        if (allLocalAttendance.isNotEmpty() && remoteMap.isEmpty()) {
-            Log.i(TAG, "Self-healing triggered: Remote attendance_records is empty (${remoteMap.size}) while local has ${allLocalAttendance.size} records. Re-marking all local attendance as dirty for cloud push.")
-            dao.markAllAttendanceDirty()
-        }
 
         // Pre-fetch remote students list once to eliminate sequential network calls
         val remoteStudentsList = try {
@@ -3079,7 +3077,31 @@ class SyncRepository(
             }
         }
 
+        if (pushOnly) {
+            return Pair(pushed, 0)
+        }
+
         try {
+            val allLocalAttendance = dao.getAllAttendanceRecordsSync()
+            val allRemoteAttendance = if (allLocalAttendance.isEmpty()) {
+                fetchAllRemotePaged<AttendanceRecordSupabaseDto>(client, "attendance_records", 1000L)
+            } else {
+                val latestLocalMillis = allLocalAttendance.maxOfOrNull { it.updatedAt } ?: 0L
+                val cutoffMillis = if (latestLocalMillis > 0L) {
+                    maxOf(0L, latestLocalMillis - (7L * 24L * 60L * 60L * 1000L))
+                } else 0L
+                val cutoffIso = millisToIso(cutoffMillis)
+                try {
+                    client.from("attendance_records").select {
+                        filter { gt("updated_at", cutoffIso) }
+                    }.decodeList<AttendanceRecordSupabaseDto>()
+                } catch (filterEx: Exception) {
+                    Log.w(TAG, "Delta pull attendance failed: ${filterEx.message}, fallback to recent 500")
+                    client.from("attendance_records").select {
+                        range(0, 499)
+                    }.decodeList<AttendanceRecordSupabaseDto>()
+                }
+            }
             val remotes = allRemoteAttendance
             for (remoteDto in remotes) {
                 val existingLocal = if (remoteDto.uuid.isNotBlank()) dao.getAttendanceRecordByUuid(remoteDto.uuid) else null

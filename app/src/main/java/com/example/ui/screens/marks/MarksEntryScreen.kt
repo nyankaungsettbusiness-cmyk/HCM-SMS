@@ -57,6 +57,8 @@ fun MarksEntryScreen(
     val searchQuery by marksViewModel.searchQuery.collectAsState()
 
     val currentBlueprint by marksViewModel.currentBlueprint.collectAsState()
+    val isQuestionBreakdownMode by marksViewModel.isQuestionBreakdownMode.collectAsState()
+    val hasActiveBlueprint = currentBlueprint != null && isQuestionBreakdownMode
     val questionAnalytics by marksViewModel.questionAnalytics.collectAsState()
     var activeStudentForBreakdown by remember { mutableStateOf<EditableMarkRow?>(null) }
     var showAnalyticsDialog by remember { mutableStateOf(false) }
@@ -344,8 +346,70 @@ fun MarksEntryScreen(
                 )
             }
 
-            // EXAM BLUEPRINT BANNER & QUESTION ANALYSIS BUTTON
-            if (currentBlueprint != null) {
+            // DUAL MODE SELECTOR: Direct Total Mark Mode vs Question Breakdown Mode
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        Text(
+                            text = "အမှတ်ထည့်သွင်းမှုပုံစံ:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        FilterChip(
+                            selected = !isQuestionBreakdownMode,
+                            onClick = { marksViewModel.setQuestionBreakdownMode(false) },
+                            label = { Text("၁။ စုစုပေါင်းရမှတ် တိုက်ရိုက် (Total Mark)", fontSize = 11.sp, fontWeight = if (!isQuestionBreakdownMode) FontWeight.Bold else FontWeight.Normal) },
+                            leadingIcon = {
+                                Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(15.dp))
+                            },
+                            modifier = Modifier.height(32.dp)
+                        )
+                        if (currentBlueprint != null) {
+                            FilterChip(
+                                selected = isQuestionBreakdownMode,
+                                onClick = { marksViewModel.setQuestionBreakdownMode(true) },
+                                label = { Text("၂။ မေးခွန်းအလိုက် စိစစ်ခွဲသွင်းမှု (Q-Breakdown)", fontSize = 11.sp, fontWeight = if (isQuestionBreakdownMode) FontWeight.Bold else FontWeight.Normal) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(15.dp))
+                                },
+                                modifier = Modifier.height(32.dp)
+                            )
+                        }
+                    }
+
+                    if (currentBlueprint != null && isQuestionBreakdownMode) {
+                        Button(
+                            onClick = { showAnalyticsDialog = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Icon(Icons.Default.Analytics, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("စိစစ်ချက် (Analysis)", fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+
+            // EXAM BLUEPRINT BANNER (Shown when Question Breakdown Mode is active)
+            if (currentBlueprint != null && isQuestionBreakdownMode) {
                 val questions = remember(currentBlueprint?.questionsJson) {
                     ExamQuestionBlueprintHelper.parseQuestions(currentBlueprint?.questionsJson)
                 }
@@ -360,37 +424,20 @@ fun MarksEntryScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                Icons.Default.Quiz,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "မေးခွန်းပုံစံ: ${currentBlueprint?.gradeName} ${currentBlueprint?.subjectName} (${questions.size} ပုဒ် - ${currentBlueprint?.totalMarks} မှတ်)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        Button(
-                            onClick = { showAnalyticsDialog = true },
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.height(30.dp)
-                        ) {
-                            Icon(Icons.Default.Analytics, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("မေးခွန်းအလိုက် စိစစ်ချက် (Analysis)", fontSize = 11.sp)
-                        }
+                        Icon(
+                            Icons.Default.Quiz,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "မေးခွန်းပုံစံ: ${currentBlueprint?.gradeName} ${currentBlueprint?.subjectName} (${questions.size} ပုဒ် - ${currentBlueprint?.totalMarks} မှတ်)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
@@ -439,7 +486,7 @@ fun MarksEntryScreen(
                                 .padding(horizontal = 8.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (currentBlueprint != null) {
+                            if (hasActiveBlueprint) {
                                 Text("Student ID", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.9f))
                                 Text("Student Name", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1.8f))
                                 Text("Mark", fontWeight = FontWeight.Bold, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.4f))
@@ -478,7 +525,7 @@ fun MarksEntryScreen(
                                 StudentMarkRowItem(
                                     row = row,
                                     isLocked = isLocked,
-                                    hasBlueprint = currentBlueprint != null,
+                                    hasBlueprint = hasActiveBlueprint,
                                     onMarkChange = { input ->
                                         marksViewModel.updateObtainedMark(row.studentId, input)
                                     },

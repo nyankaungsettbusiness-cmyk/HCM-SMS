@@ -90,6 +90,12 @@ class MarksViewModel(
     val filterStatus = MutableStateFlow(MarkFilterStatus.ALL)
     val sortOption = MutableStateFlow(MarkSortOption.ROLL_ASC)
 
+    // Dual Mode: Total Mark Mode (default false for simple backdated entry) vs Question Breakdown Mode
+    val isQuestionBreakdownMode = MutableStateFlow(false)
+    fun setQuestionBreakdownMode(enabled: Boolean) {
+        isQuestionBreakdownMode.value = enabled
+    }
+
     private val academicHistories: Flow<List<StudentAcademicHistoryEntity>> = academicYearRepository?.getAllStudentAcademicHistories()
         ?: flowOf(emptyList())
 
@@ -310,7 +316,8 @@ class MarksViewModel(
         val index = currentList.indexOfFirst { it.studentId == studentId }
         if (index != -1) {
             val target = currentList[index]
-            val max = target.maxMarks
+            // Allow up to maxOf(target.maxMarks, 100) so teachers entering standard 0-100 exam marks are not blocked by accidental low maxMarks
+            val max = if (target.maxMarks > 0) maxOf(target.maxMarks, 100) else 100
 
             var errorMsg: String? = null
             val numVal = input.toDoubleOrNull()
