@@ -58,7 +58,17 @@ fun MarksEntryScreen(
 
     val currentBlueprint by marksViewModel.currentBlueprint.collectAsState()
     val isQuestionBreakdownMode by marksViewModel.isQuestionBreakdownMode.collectAsState()
-    val hasActiveBlueprint = currentBlueprint != null && isQuestionBreakdownMode
+    val effectiveBlueprint = currentBlueprint ?: remember(selectedGrade, selectedSubject) {
+        val defQuestions = ExamQuestionBlueprintHelper.getDefaultQuestionsForSubject(selectedSubject)
+        val total = defQuestions.sumOf { it.maxMark }.toInt()
+        ExamQuestionBlueprintEntity(
+            gradeName = selectedGrade,
+            subjectName = selectedSubject,
+            totalMarks = total,
+            questionsJson = ExamQuestionBlueprintHelper.serializeQuestions(defQuestions)
+        )
+    }
+    val hasActiveBlueprint = isQuestionBreakdownMode
     val questionAnalytics by marksViewModel.questionAnalytics.collectAsState()
     var activeStudentForBreakdown by remember { mutableStateOf<EditableMarkRow?>(null) }
     var showAnalyticsDialog by remember { mutableStateOf(false) }
@@ -380,20 +390,18 @@ fun MarksEntryScreen(
                             },
                             modifier = Modifier.height(32.dp)
                         )
-                        if (currentBlueprint != null) {
-                            FilterChip(
-                                selected = isQuestionBreakdownMode,
-                                onClick = { marksViewModel.setQuestionBreakdownMode(true) },
-                                label = { Text("၂။ မေးခွန်းအလိုက် စိစစ်ခွဲသွင်းမှု (Q-Breakdown)", fontSize = 11.sp, fontWeight = if (isQuestionBreakdownMode) FontWeight.Bold else FontWeight.Normal) },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(15.dp))
-                                },
-                                modifier = Modifier.height(32.dp)
-                            )
-                        }
+                        FilterChip(
+                            selected = isQuestionBreakdownMode,
+                            onClick = { marksViewModel.setQuestionBreakdownMode(true) },
+                            label = { Text("၂။ မေးခွန်းအလိုက် စိစစ်ခွဲသွင်းမှု (Q-Breakdown)", fontSize = 11.sp, fontWeight = if (isQuestionBreakdownMode) FontWeight.Bold else FontWeight.Normal) },
+                            leadingIcon = {
+                                Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(15.dp))
+                            },
+                            modifier = Modifier.height(32.dp)
+                        )
                     }
 
-                    if (currentBlueprint != null && isQuestionBreakdownMode) {
+                    if (isQuestionBreakdownMode) {
                         Button(
                             onClick = { showAnalyticsDialog = true },
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
@@ -409,9 +417,9 @@ fun MarksEntryScreen(
             }
 
             // EXAM BLUEPRINT BANNER (Shown when Question Breakdown Mode is active)
-            if (currentBlueprint != null && isQuestionBreakdownMode) {
-                val questions = remember(currentBlueprint?.questionsJson) {
-                    ExamQuestionBlueprintHelper.parseQuestions(currentBlueprint?.questionsJson)
+            if (isQuestionBreakdownMode) {
+                val questions = remember(effectiveBlueprint.questionsJson) {
+                    ExamQuestionBlueprintHelper.parseQuestions(effectiveBlueprint.questionsJson)
                 }
                 Surface(
                     shape = RoundedCornerShape(8.dp),
@@ -433,7 +441,8 @@ fun MarksEntryScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "မေးခွန်းပုံစံ: ${currentBlueprint?.gradeName} ${currentBlueprint?.subjectName} (${questions.size} ပုဒ် - ${currentBlueprint?.totalMarks} မှတ်)",
+                            text = "မေးခွန်းပုံစံ: ${effectiveBlueprint.gradeName} ${effectiveBlueprint.subjectName} (${questions.size} ပုဒ် - ${effectiveBlueprint.totalMarks} မှတ်)" +
+                                    (if (currentBlueprint == null) " (Standard Preset)" else ""),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -544,23 +553,21 @@ fun MarksEntryScreen(
 
     // Question Breakdown Dialog
     activeStudentForBreakdown?.let { student ->
-        currentBlueprint?.let { bp ->
-            QuestionBreakdownEntryDialog(
-                student = student,
-                blueprint = bp,
-                allStudents = displayedRows,
-                isLocked = isLocked,
-                onSave = { marksMap ->
-                    marksViewModel.updateQuestionMarks(student.studentId, marksMap)
-                    activeStudentForBreakdown = null
-                    snackbarMessage = "${student.studentName} ၏ မေးခွန်းအလိုက် အမှတ်များ ထည့်သွင်းပြီးပါပြီ"
-                },
-                onNavigateStudent = { nextStudent ->
-                    activeStudentForBreakdown = nextStudent
-                },
-                onDismiss = { activeStudentForBreakdown = null }
-            )
-        }
+        QuestionBreakdownEntryDialog(
+            student = student,
+            blueprint = effectiveBlueprint,
+            allStudents = displayedRows,
+            isLocked = isLocked,
+            onSave = { marksMap ->
+                marksViewModel.updateQuestionMarks(student.studentId, marksMap)
+                activeStudentForBreakdown = null
+                snackbarMessage = "${student.studentName} ၏ မေးခွန်းအလိုက် အမှတ်များ ထည့်သွင်းပြီးပါပြီ"
+            },
+            onNavigateStudent = { nextStudent ->
+                activeStudentForBreakdown = nextStudent
+            },
+            onDismiss = { activeStudentForBreakdown = null }
+        )
     }
 
     // Question Weakness Analytics Dialog

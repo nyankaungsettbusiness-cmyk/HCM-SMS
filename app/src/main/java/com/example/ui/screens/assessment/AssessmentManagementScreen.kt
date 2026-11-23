@@ -890,7 +890,7 @@ fun AssessmentFormDialog(
         )
     }
 
-    var selectedStream by remember { mutableStateOf("STEAMS-1") }
+    var selectedStream by remember { mutableStateOf("ALL STREAMS") }
     var selectedMonth by remember { mutableStateOf(if (assessment?.month.orEmpty().isNotBlank()) assessment!!.month else "June") }
     var selectedWeekNumber by remember { mutableStateOf(if (assessment?.weekNumber.orEmpty().isNotBlank()) assessment!!.weekNumber else "WT1") }
     var assessmentName by remember { mutableStateOf(assessment?.assessmentName ?: "") }
@@ -915,9 +915,10 @@ fun AssessmentFormDialog(
         }
     }
 
-    // Dynamic Lists based on selected grade
+    // Dynamic Lists based on selected grade and stream (ALL STREAMS includes all subjects)
     val availableSubjects = remember(selectedGrade, selectedStream) {
-        assessmentViewModel.getSubjectsForGrade(selectedGrade, selectedStream)
+        val streamParam = if (selectedStream == "ALL STREAMS") "" else selectedStream
+        assessmentViewModel.getSubjectsForGrade(selectedGrade, streamParam)
     }
 
     // Duplicate check for Weekly Test
@@ -943,14 +944,15 @@ fun AssessmentFormDialog(
     }
 
     // Auto update assessment name if blank
-    LaunchedEffect(selectedGrade, selectedSubject, selectedAssessmentType, selectedPilotNumber, selectedCetNumber, selectedMonth, selectedWeekNumber, isFullGradeAssessment) {
+    LaunchedEffect(selectedGrade, selectedStream, selectedSubject, selectedAssessmentType, selectedPilotNumber, selectedCetNumber, selectedMonth, selectedWeekNumber, isFullGradeAssessment) {
         if (assessment == null || assessmentName.isBlank()) {
+            val streamSuffix = if (SchoolPolicy.isHighSchool(selectedGrade) && selectedStream != "ALL STREAMS") " ($selectedStream)" else ""
             assessmentName = when {
-                isWeeklyTest -> "$selectedGrade $selectedSubject Weekly Test ($selectedWeekNumber - $selectedMonth)"
-                selectedAssessmentType == "Pilot Test" -> "$selectedGrade $selectedPilotNumber ($selectedMonth)"
-                selectedAssessmentType == "CET" -> "$selectedGrade $selectedCetNumber ($selectedMonth)"
-                isFullGradeAssessment -> "$selectedGrade $selectedAssessmentType ($selectedMonth)"
-                else -> "$selectedGrade $selectedSubject $selectedAssessmentType ($selectedMonth)"
+                isWeeklyTest -> "$selectedGrade $selectedSubject Weekly Test ($selectedWeekNumber - $selectedMonth)$streamSuffix"
+                selectedAssessmentType == "Pilot Test" -> "$selectedGrade $selectedPilotNumber ($selectedMonth)$streamSuffix"
+                selectedAssessmentType == "CET" -> "$selectedGrade $selectedCetNumber ($selectedMonth)$streamSuffix"
+                isFullGradeAssessment -> "$selectedGrade $selectedAssessmentType ($selectedMonth)$streamSuffix"
+                else -> "$selectedGrade $selectedSubject $selectedAssessmentType ($selectedMonth)$streamSuffix"
             }
         }
     }
@@ -1041,7 +1043,8 @@ fun AssessmentFormDialog(
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Stream:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-                            SchoolPolicy.VALID_STREAMS.forEach { st: String ->
+                            val streamOptions = listOf("ALL STREAMS") + SchoolPolicy.VALID_STREAMS
+                            streamOptions.forEach { st: String ->
                                 FilterChip(
                                     selected = selectedStream == st,
                                     onClick = { selectedStream = st },
