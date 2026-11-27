@@ -59,7 +59,9 @@ data class EditableMarkRow(
     val remarks: String,
     val errorMessage: String? = null,
     val questionMarksJson: String? = null,
-    val questionMarks: Map<String, Double> = emptyMap()
+    val questionMarks: Map<String, Double> = emptyMap(),
+    val existingId: Long = 0L,
+    val uuid: String = ""
 )
 
 class MarksViewModel(
@@ -266,7 +268,9 @@ class MarksViewModel(
                         remarks = existing?.remarks ?: "",
                         errorMessage = null,
                         questionMarksJson = qJson,
-                        questionMarks = qMarksMap
+                        questionMarks = qMarksMap,
+                        existingId = existing?.id ?: 0L,
+                        uuid = existing?.uuid ?: ""
                     )
                 }
             }.collect { rows ->
@@ -436,8 +440,11 @@ class MarksViewModel(
         }
 
         viewModelScope.launch {
+            val now = System.currentTimeMillis()
             val markEntities = rows.map { row ->
+                val stableUuid = row.uuid.ifBlank { java.util.UUID.randomUUID().toString() }
                 StudentMarkEntity(
+                    id = row.existingId,
                     assessmentId = assessment.id,
                     studentId = row.studentId,
                     studentCode = row.studentCode,
@@ -452,8 +459,11 @@ class MarksViewModel(
                     isDistinction = row.isDistinction,
                     remarks = row.remarks,
                     questionMarksJson = row.questionMarksJson,
-                    updatedAt = System.currentTimeMillis(),
-                    updatedBy = currentUserName
+                    updatedAt = now,
+                    updatedBy = currentUserName,
+                    uuid = stableUuid,
+                    isDirty = true,
+                    isDeleted = false
                 )
             }
             marksRepository.saveMarks(markEntities)

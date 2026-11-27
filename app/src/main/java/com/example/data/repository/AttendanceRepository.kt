@@ -175,7 +175,9 @@ class AttendanceRepository(
         val month = parts.getOrNull(1)?.toIntOrNull() ?: 6
 
         val weekdays = getWeekdaysForMonth(year, month, schoolDays)
-        attendanceDao.deleteAttendanceForClassMonth(academicYear, grade, className, prefix)
+        val existingRecords = attendanceDao.getAttendanceForClassMonthSync(academicYear, grade, className, prefix)
+        val existingByKey = existingRecords.associateBy { "${it.studentId}_${it.date}_${it.session.name}" }
+        val reusedIds = mutableSetOf<Long>()
 
         val newRecords = mutableListOf<AttendanceRecordEntity>()
         val now = System.currentTimeMillis()
@@ -211,9 +213,20 @@ class AttendanceRepository(
                         else -> AttendanceStatus.ABSENT
                     }
 
+                    val existing = existingByKey["${input.studentId}_${dateStr}_${session.name}"]
+                    val canReuse = existing != null && existing.className.equals(studentClass, ignoreCase = true)
+                    if (canReuse && existing != null) {
+                        reusedIds.add(existing.id)
+                    }
+                    val stableUuid = if (canReuse && existing != null && existing.uuid.isNotBlank()) {
+                        existing.uuid
+                    } else {
+                        java.util.UUID.randomUUID().toString()
+                    }
+
                     newRecords.add(
                         AttendanceRecordEntity(
-                            id = 0L,
+                            id = if (canReuse && existing != null) existing.id else 0L,
                             academicYear = academicYear,
                             date = dateStr,
                             session = session,
@@ -225,13 +238,26 @@ class AttendanceRepository(
                             status = status,
                             recordedBy = recordedBy,
                             recordedDateTime = now,
-                            uuid = java.util.UUID.randomUUID().toString(),
+                            uuid = stableUuid,
                             updatedAt = now,
                             isDirty = true,
                             isDeleted = false
                         )
                     )
                 }
+            }
+        }
+
+        // Soft-delete any leftover days in this month that are no longer in the schedule so cloud stays in sync
+        for (oldRec in existingRecords) {
+            if (oldRec.id !in reusedIds && !oldRec.isDeleted) {
+                newRecords.add(
+                    oldRec.copy(
+                        isDeleted = true,
+                        isDirty = true,
+                        updatedAt = now
+                    )
+                )
             }
         }
 

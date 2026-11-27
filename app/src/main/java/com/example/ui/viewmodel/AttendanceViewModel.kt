@@ -26,6 +26,7 @@ data class StudentAttendanceUiItem(
     val student: StudentEntity,
     val currentStatus: AttendanceStatus,
     val existingRecordId: Long = 0L,
+    val existingUuid: String = "",
     val recordedBy: String = "",
     val lastRecordedTime: String = ""
 )
@@ -199,6 +200,7 @@ class AttendanceViewModel(
                     student = student,
                     currentStatus = status,
                     existingRecordId = savedRec?.id ?: 0L,
+                    existingUuid = savedRec?.uuid ?: "",
                     recordedBy = savedRec?.recordedBy ?: "",
                     lastRecordedTime = lastTime
                 )
@@ -421,8 +423,11 @@ class AttendanceViewModel(
             val savedRecordsMap = savedSessionRecords.value.associateBy { it.studentId }
 
             val recordsToSave = students.map { student ->
-                val status = edits[student.id] ?: savedRecordsMap[student.id]?.status ?: AttendanceStatus.PRESENT
-                val existingId = savedRecordsMap[student.id]?.id ?: 0L
+                val existingRec = savedRecordsMap[student.id]
+                val status = edits[student.id] ?: existingRec?.status ?: AttendanceStatus.PRESENT
+                val existingId = existingRec?.id ?: 0L
+                val stableUuid = existingRec?.uuid?.ifBlank { java.util.UUID.randomUUID().toString() }
+                    ?: java.util.UUID.randomUUID().toString()
                 val studentClass = if (student.className.isNotBlank() && student.className != "All") {
                     student.className
                 } else if (cl != "All") {
@@ -443,7 +448,9 @@ class AttendanceViewModel(
                     className = studentClass,
                     status = status,
                     recordedBy = recordedBy.ifEmpty { "Teacher" },
-                    recordedDateTime = System.currentTimeMillis()
+                    recordedDateTime = System.currentTimeMillis(),
+                    uuid = stableUuid,
+                    isDeleted = false
                 )
             }
 

@@ -70,7 +70,7 @@ data class StudentSupabaseDto(
             else -> ""
         }
         return StudentEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             studentCode = effectiveCode,
             name = name.ifBlank { existingLocal?.name ?: "" },
             gender = gender.ifBlank { existingLocal?.gender ?: "Male" },
@@ -164,7 +164,7 @@ data class TeacherSupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val parsedCreatedAt = parseIsoToMillis(createdAt)
         return TeacherEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             teacherCode = teacherId,
             fullName = name,
             phone = phone,
@@ -244,7 +244,7 @@ data class UserSupabaseDto(
         }
         val isAct = (resolvedStatus == UserStatus.ACTIVE) && !(isDeleted ?: false)
         return UserEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             username = username.trim(),
             fullName = resolvedName,
             role = parsedRole,
@@ -379,7 +379,7 @@ data class GradeSupabaseDto(
         val level = try { EducationLevel.valueOf(educationLevel) } catch (e: Exception) { EducationLevel.PRIMARY }
         val effectiveName = gradeName.ifBlank { name ?: "" }
         return GradeEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             gradeName = effectiveName,
             educationLevel = level,
             reportCardTemplate = reportCardTemplate,
@@ -422,7 +422,7 @@ data class SchoolClassSupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val effectiveName = className.ifBlank { name ?: "" }
         return SchoolClassEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             gradeId = resolvedGradeId,
             className = effectiveName,
             capacity = capacity,
@@ -471,7 +471,7 @@ data class SubjectSupabaseDto(
         val cat = try { SubjectCategory.valueOf(category.trim().uppercase()) } catch (e: Exception) { SubjectCategory.ACADEMIC }
         val level = try { EducationLevel.valueOf(educationLevel.trim().uppercase()) } catch (e: Exception) { EducationLevel.PRIMARY }
         return SubjectEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             name = name,
             category = cat,
             educationLevel = level,
@@ -546,7 +546,7 @@ data class AssessmentTypeSupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val level = try { EducationLevel.valueOf(educationLevel) } catch (e: Exception) { EducationLevel.PRIMARY }
         return AssessmentTypeEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             name = name,
             educationLevel = level,
             isCustom = isCustom,
@@ -592,7 +592,7 @@ data class CustomExamSupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val effectiveName = examName.ifBlank { name ?: "" }
         return CustomExamEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             gradeId = gradeId,
             examName = effectiveName,
             isEnabled = isEnabled,
@@ -642,7 +642,7 @@ data class GradingPolicySupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val level = try { EducationLevel.valueOf(educationLevel) } catch (e: Exception) { EducationLevel.PRIMARY }
         return GradingPolicyEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             educationLevel = level,
             subjectName = subjectName,
             maxMark = maxMark,
@@ -704,7 +704,7 @@ data class AssessmentSupabaseDto(
         val effectiveMonth = if (assessmentPeriod.isNotBlank()) assessmentPeriod else (month ?: "Monthly")
         val effectiveDate = if (dateConducted.isNotBlank()) dateConducted else (date ?: "2026-06-01")
         return AssessmentEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             academicYear = academicYear,
             grade = grade,
             className = "All Classes",
@@ -796,7 +796,7 @@ data class StudentMarkSupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val finalMarks = if (isAbsent || isExempt) null else (if (marksObtained > 0.0) marksObtained else (value ?: score ?: marksObtained))
         return StudentMarkEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             assessmentId = resolvedAssessmentId,
             studentId = resolvedStudentId,
             studentCode = this.studentCode?.takeIf { it.isNotBlank() } ?: studentCode,
@@ -945,7 +945,7 @@ data class AssessmentResultSupabaseDto(
     ): AssessmentResultSummaryEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         return AssessmentResultSummaryEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             assessmentId = resolvedAssessmentId,
             studentId = resolvedStudentId,
             studentCode = studentCode,
@@ -1112,7 +1112,7 @@ data class HolisticCategorySupabaseDto(
         }
 
         return HolisticCategoryEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             categoryName = resolvedName,
             description = cleanDescription,
             pillar = resolvedPillar,
@@ -1190,7 +1190,7 @@ data class HolisticResultSupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val resolvedRating = if (ratingStars > 0) ratingStars else rating
         return HolisticResultEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             studentId = resolvedStudentId,
             assessmentPeriod = assessmentPeriod,
             academicYear = academicYear,
@@ -1284,7 +1284,7 @@ data class SgiCategorySupabaseDto(
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         val resolvedName = categoryName.ifBlank { name }
         return SgiCategoryEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             indicatorName = resolvedName,
             description = description,
             maxStars = maxStars,
@@ -1341,7 +1341,7 @@ data class SgiResultSupabaseDto(
     ): SgiResultEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         return SgiResultEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             studentId = resolvedStudentId,
             assessmentPeriod = assessmentPeriod,
             academicYear = academicYear,
@@ -1438,7 +1438,7 @@ data class TeacherCommentSupabaseDto(
     ): TeacherCommentEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         return TeacherCommentEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             studentId = resolvedStudentId,
             assessmentPeriod = assessmentPeriod,
             academicYear = academicYear,
@@ -1529,7 +1529,7 @@ data class AssessmentPeriodSupabaseDto(
     fun toEntity(existingLocalId: Long = 0): AssessmentPeriodEntity {
         val parsedUpdatedAt = parseIsoToMillis(updatedAt)
         return AssessmentPeriodEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             periodName = periodName,
             educationLevel = educationLevel,
             periodCategory = periodCategory,
@@ -1588,7 +1588,7 @@ data class AttendanceRecordSupabaseDto(
         val parsedStatus = try { AttendanceStatus.valueOf(status) } catch (e: Exception) { AttendanceStatus.PRESENT }
         val parsedSession = try { AttendanceSession.valueOf(session) } catch (e: Exception) { AttendanceSession.MORNING }
         return AttendanceRecordEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             academicYear = academicYear,
             date = date,
             session = parsedSession,
@@ -1688,7 +1688,7 @@ data class AcademicYearSupabaseDto(
         val parsedStatus = try { AcademicYearStatus.valueOf(status) } catch (e: Exception) { AcademicYearStatus.UPCOMING }
         val effectiveName = yearName.ifBlank { name ?: "" }
         return AcademicYearEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             yearCode = effectiveName,
             displayName = if (effectiveName.isNotBlank()) "$effectiveName Academic Year" else "Academic Year",
             startDate = startDate,
@@ -1753,7 +1753,7 @@ data class PromotionHistorySupabaseDto(
         val parsedPromotedDate = parseIsoToMillis(promotedDate)
         val parsedAction = try { PromotionAction.valueOf(actionType) } catch (e: Exception) { PromotionAction.PROMOTED }
         return PromotionHistoryEntity(
-            id = if (existingLocalId > 0) existingLocalId else (id ?: 0),
+            id = if (existingLocalId > 0) existingLocalId else 0L,
             studentId = resolvedStudentId,
             studentCode = studentCode,
             studentName = studentName,

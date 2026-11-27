@@ -12,12 +12,13 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MarksDao {
-    @Query("SELECT * FROM student_marks WHERE assessmentId = :assessmentId ORDER BY rollNo ASC")
+    @Query("SELECT * FROM student_marks WHERE assessmentId = :assessmentId AND isDeleted = 0 ORDER BY rollNo ASC")
     fun getMarksForAssessment(assessmentId: Long): Flow<List<StudentMarkEntity>>
 
     @Query("""
         SELECT * FROM student_marks 
         WHERE assessmentId = :assessmentId 
+          AND isDeleted = 0
           AND (
             subjectName = :subjectName 
             OR (:subjectName = 'Biology' AND (subjectName LIKE 'Biology%' OR subjectName = 'Biology / Computer Science'))
@@ -45,7 +46,7 @@ interface MarksDao {
     @Query("SELECT COUNT(*) FROM student_marks WHERE isDirty = 1")
     suspend fun getDirtyMarksCount(): Int
 
-    @Query("SELECT * FROM student_marks")
+    @Query("SELECT * FROM student_marks WHERE isDeleted = 0")
     fun getAllMarks(): Flow<List<StudentMarkEntity>>
 
     @Query("SELECT * FROM student_marks")
@@ -89,7 +90,7 @@ interface MarksDao {
     @Query("SELECT * FROM assessment_results WHERE studentId = :studentId")
     fun getAssessmentResultsForStudent(studentId: Long): Flow<List<AssessmentResultSummaryEntity>>
 
-    @Query("SELECT * FROM student_marks WHERE studentId = :studentId")
+    @Query("SELECT * FROM student_marks WHERE studentId = :studentId AND isDeleted = 0")
     fun getMarksForStudent(studentId: Long): Flow<List<StudentMarkEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

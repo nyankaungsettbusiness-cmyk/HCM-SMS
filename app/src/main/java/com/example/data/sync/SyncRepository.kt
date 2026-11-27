@@ -116,6 +116,32 @@ class SyncRepository(
             }
             return allItems
         }
+
+        /**
+         * Fetch all rows updated after [cutoffIso] using range-based chunking.
+         * Throws on network error so callers can avoid applying partial pulls.
+         */
+        suspend inline fun <reified T : Any> fetchRemoteUpdatedSincePaged(
+            client: SupabaseClient,
+            table: String,
+            cutoffIso: String,
+            pageSize: Long = 1000L
+        ): List<T> {
+            val allItems = mutableListOf<T>()
+            var from = 0L
+            while (true) {
+                val to = from + pageSize - 1L
+                val page = client.from(table).select {
+                    filter { gt("updated_at", cutoffIso) }
+                    range(from, to)
+                }.decodeList<T>()
+                if (page.isEmpty()) break
+                allItems.addAll(page)
+                if (page.size < pageSize) break
+                from += pageSize
+            }
+            return allItems
+        }
     }
 
     /**
@@ -2095,41 +2121,31 @@ class SyncRepository(
         }
 
         try {
-            val remotes = client.from("assessments").select().decodeList<AssessmentSupabaseDto>()
+            val remotes = fetchAllRemotePaged<AssessmentSupabaseDto>(client, "assessments", 1000L)
             val allLocalAssessments = dao.getAllAssessmentsList()
             val localByUuidMap = allLocalAssessments.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }.toMutableMap()
 
-            fun makeAssessmentKey(grade: String, month: String, year: String, title: String): String {
-                return "${grade.trim().uppercase()}_${month.trim().uppercase()}_${year.trim().uppercase()}_${title.trim().uppercase()}"
-            }
-
-            fun makeAssessmentGradeMonthKey(grade: String, month: String, year: String): String {
-                return "${grade.trim().uppercase()}_${month.trim().uppercase()}_${year.trim().uppercase()}"
+            fun makeAssessmentKey(grade: String, month: String, year: String, title: String, subject: String, type: String): String {
+                return "${grade.trim().uppercase()}_${month.trim().uppercase()}_${year.trim().uppercase()}_${title.trim().uppercase()}_${subject.trim().uppercase()}_${type.trim().uppercase()}"
             }
 
             val localByNaturalKey = allLocalAssessments.associateBy {
-                makeAssessmentKey(it.grade, it.month, it.academicYear, it.assessmentName)
-            }.toMutableMap()
-
-            val localByGradeMonth = allLocalAssessments.associateBy {
-                makeAssessmentGradeMonthKey(it.grade, it.month, it.academicYear)
+                makeAssessmentKey(it.grade, it.month, it.academicYear, it.assessmentName, it.subjectName, it.assessmentType)
             }.toMutableMap()
 
             for (remoteDto in remotes) {
                 val rMonth = (remoteDto.month ?: remoteDto.assessmentPeriod).trim()
-                val rKey = makeAssessmentKey(remoteDto.grade, rMonth, remoteDto.academicYear, remoteDto.title)
-                val rGradeMonthKey = makeAssessmentGradeMonthKey(remoteDto.grade, rMonth, remoteDto.academicYear)
+                val rKey = makeAssessmentKey(remoteDto.grade, rMonth, remoteDto.academicYear, remoteDto.title, remoteDto.subject, remoteDto.assessmentType)
 
                 val existingLocal = (if (remoteDto.uuid.isNotBlank()) localByUuidMap[remoteDto.uuid] else null)
                     ?: localByNaturalKey[rKey]
-                    ?: localByGradeMonth[rGradeMonthKey]
 
                 if (existingLocal != null) {
                     if (remoteDto.id != null) {
                         localToRemoteAssessmentIdCache[existingLocal.id] = remoteDto.id
                         remoteToLocalAssessmentIdCache[remoteDto.id] = existingLocal.id
                     }
-                    if (remoteDto.uuid.isNotBlank() && existingLocal.uuid != remoteDto.uuid) {
+                    if (!existingLocal.isDirty && remoteDto.uuid.isNotBlank() && existingLocal.uuid != remoteDto.uuid) {
                         dao.markAssessmentSynced(existingLocal.id, remoteDto.uuid)
                         localByUuidMap[remoteDto.uuid] = existingLocal
                     }
@@ -2147,13 +2163,14 @@ class SyncRepository(
                         continue
                     }
 
-                    if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
+                    // Never overwrite unsynced/dirty local assessments from pull
+                    if (!existingLocal.isDirty) {
                         dao.updateAssessment(remoteEntity)
                         pulled++
                     }
                 } else {
                     if (!remoteDto.isDeleted) {
-                        val newEntity = remoteDto.toEntity()
+                        val newEntity = remoteDto.toEntity(existingLocalId = 0L)
                         val newId = dao.insertAssessment(newEntity)
                         if (newId > 0 && remoteDto.id != null) {
                             localToRemoteAssessmentIdCache[newId] = remoteDto.id
@@ -2161,7 +2178,6 @@ class SyncRepository(
                             val insertedEntity = newEntity.copy(id = newId)
                             if (remoteDto.uuid.isNotBlank()) localByUuidMap[remoteDto.uuid] = insertedEntity
                             localByNaturalKey[rKey] = insertedEntity
-                            localByGradeMonth[rGradeMonthKey] = insertedEntity
                         }
                         pulled++
                     }
@@ -2180,16 +2196,11 @@ class SyncRepository(
         var pushed = 0; var pulled = 0
 
         // Pre-fetch remote students and assessments once to eliminate hundreds of sequential network calls
-        val remoteStudentsList = try {
-            client.from("students").select().decodeList<StudentSupabaseDto>()
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            emptyList()
-        }
+        val remoteStudentsList = fetchAllRemotePaged<StudentSupabaseDto>(client, "students", 1000L)
+        val studentsFetchOk = remoteStudentsList.isNotEmpty()
         val remoteStudentById = remoteStudentsList.associateBy { it.id }
         val remoteStudentByUuid = remoteStudentsList.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
-        val remoteStudentByCode = remoteStudentsList.filter { it.studentId.isNotBlank() }.associateBy { it.studentId }
+        val remoteStudentByCode = remoteStudentsList.filter { it.studentId.isNotBlank() }.associateBy { it.studentId.trim().uppercase() }
 
         remoteStudentsList.forEach { remoteStudent ->
             if (remoteStudent.id != null) {
@@ -2206,13 +2217,8 @@ class SyncRepository(
             }
         }
 
-        val remoteAssessmentsList = try {
-            client.from("assessments").select().decodeList<AssessmentSupabaseDto>()
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            emptyList()
-        }
+        val remoteAssessmentsList = fetchAllRemotePaged<AssessmentSupabaseDto>(client, "assessments", 1000L)
+        val assessmentsFetchOk = remoteAssessmentsList.isNotEmpty()
         val remoteAssessmentById = remoteAssessmentsList.associateBy { it.id }
         val remoteAssessmentByUuid = remoteAssessmentsList.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
 
@@ -2249,16 +2255,28 @@ class SyncRepository(
 
                 val targetStudentId = localToRemoteStudentIdCache[localStudent.id]
                     ?: (if (localStudent.uuid.isNotBlank()) remoteStudentByUuid[localStudent.uuid]?.id else null)
-                    ?: (if (localStudent.studentCode.isNotBlank()) remoteStudentByCode[localStudent.studentCode]?.id else null)
-                    ?: ensureRemoteStudentId(client, localStudent)
+                    ?: (if (localStudent.studentCode.isNotBlank()) remoteStudentByCode[localStudent.studentCode.trim().uppercase()]?.id else null)
+                    ?: ensureRemoteStudentIdOrNull(client, localStudent)
+
+                if (targetStudentId == null) {
+                    Log.w(TAG, "Deferring student_mark push (id=${item.id}): could not resolve remote student ID for ${localStudent.studentCode}")
+                    failedIdsThisRun.add(item.id)
+                    continue
+                }
 
                 val localAssessment = assessmentDao?.getAssessmentByIdDirect(item.assessmentId)
                 val targetAssessmentId = if (localAssessment != null) {
                     localToRemoteAssessmentIdCache[localAssessment.id]
                         ?: (if (localAssessment.uuid.isNotBlank()) remoteAssessmentByUuid[localAssessment.uuid]?.id else null)
-                        ?: ensureRemoteAssessmentId(client, localAssessment)
+                        ?: ensureRemoteAssessmentIdOrNull(client, localAssessment)
                 } else {
-                    item.assessmentId
+                    null
+                }
+
+                if (targetAssessmentId == null) {
+                    Log.w(TAG, "Deferring student_mark push (id=${item.id}): could not resolve remote assessment ID for ${item.assessmentId}")
+                    failedIdsThisRun.add(item.id)
+                    continue
                 }
 
                 val updated = if (item.uuid.isBlank()) item.copy(uuid = assignedUuid) else item
@@ -2325,22 +2343,22 @@ class SyncRepository(
                 // Initial load: pull all remote records
                 fetchAllRemotePaged<StudentMarkSupabaseDto>(client, "student_marks", 1000L)
             } else {
-                // Delta pull: only pull records modified in the last 7 days to eliminate bandwidth usage
+                // Delta pull: only pull records modified in the last 7 days with pagination
                 val latestLocalMillis = currentLocalMarks.maxOfOrNull { it.updatedAt } ?: 0L
                 val cutoffMillis = if (latestLocalMillis > 0L) {
                     maxOf(0L, latestLocalMillis - (7L * 24L * 60L * 60L * 1000L))
                 } else 0L
                 val cutoffIso = millisToIso(cutoffMillis)
                 try {
-                    client.from("student_marks").select {
-                        filter { gt("updated_at", cutoffIso) }
-                    }.decodeList<StudentMarkSupabaseDto>()
+                    fetchRemoteUpdatedSincePaged<StudentMarkSupabaseDto>(client, "student_marks", cutoffIso, 1000L)
                 } catch (filterEx: Exception) {
-                    Log.w(TAG, "Delta pull student_marks failed: ${filterEx.message}, fallback to recent 500")
-                    client.from("student_marks").select {
-                        range(0, 499)
-                    }.decodeList<StudentMarkSupabaseDto>()
+                    Log.w(TAG, "Delta pull student_marks failed: ${filterEx.message}, skipping pull to protect local data")
+                    emptyList()
                 }
+            }
+
+            if (allRemoteMarks.isEmpty()) {
+                return Pair(pushed, 0)
             }
 
             val allLocalStudents = studentDao.getAllStudentsList()
@@ -2354,11 +2372,8 @@ class SyncRepository(
             val assessmentById = allLocalAssessments.associateBy { it.id }
             val assessmentByUuid = allLocalAssessments.filter { it.uuid.isNotBlank() }
                 .associateBy { it.uuid }
-            val assessmentByGradeMonthYear = allLocalAssessments.associateBy {
-                "${it.grade.trim().uppercase()}_${it.month.trim().uppercase()}_${it.academicYear.trim().uppercase()}"
-            }
-            val assessmentByGradeMonth = allLocalAssessments.associateBy {
-                "${it.grade.trim().uppercase()}_${it.month.trim().uppercase()}"
+            val assessmentByNaturalKey = allLocalAssessments.associateBy {
+                "${it.grade.trim().uppercase()}_${it.month.trim().uppercase()}_${it.academicYear.trim().uppercase()}_${it.assessmentName.trim().uppercase()}_${it.subjectName.trim().uppercase()}_${it.assessmentType.trim().uppercase()}"
             }
 
             val localMarkByUuid = currentLocalMarks.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
@@ -2366,25 +2381,27 @@ class SyncRepository(
                 "${it.assessmentId}_${it.studentId}_${it.subjectName.trim().uppercase()}"
             }
 
-            val pulledEntities = mutableListOf<StudentMarkEntity>()
+            // Sort ascending by updatedAt so newest remote record always wins if duplicates exist on cloud
+            val sortedRemoteMarks = allRemoteMarks.sortedBy { parseIsoToMillis(it.updatedAt) }
+            val dedupPulledMap = LinkedHashMap<String, StudentMarkEntity>()
 
-            for (remoteDto in allRemoteMarks) {
-                // 1. Resolve Local Student directly by student_code, uuid, or ID caches
+            for (remoteDto in sortedRemoteMarks) {
+                // 1. Resolve Local Student directly by student_code, remoteToLocal cache, or remoteStudent mapping (never use mark's UUID as student UUID!)
+                val remoteStu = remoteStudentById[remoteDto.studentId]
                 val localStudent = (if (!remoteDto.studentCode.isNullOrBlank()) studentByCode[remoteDto.studentCode.trim().uppercase()] else null)
-                    ?: (if (remoteDto.uuid.isNotBlank()) studentByUuid[remoteDto.uuid] else null)
                     ?: (remoteToLocalStudentIdCache[remoteDto.studentId]?.let { studentById[it] })
-                    ?: (remoteStudentById[remoteDto.studentId]?.let { rStu ->
-                        (if (rStu.studentId.isNotBlank()) studentByCode[rStu.studentId.trim().uppercase()] else null)
-                            ?: (if (rStu.uuid.isNotBlank()) studentByUuid[rStu.uuid] else null)
+                    ?: (remoteStu?.let { rStu ->
+                        (if (rStu.uuid.isNotBlank()) studentByUuid[rStu.uuid] else null)
+                            ?: (if (rStu.studentId.isNotBlank()) studentByCode[rStu.studentId.trim().uppercase()] else null)
                     })
-                    ?: studentById[remoteDto.studentId]
+                    ?: (if (!studentsFetchOk) studentById[remoteDto.studentId] else null)
 
                 if (localStudent == null) {
                     Log.w(TAG, "Skipping remote student_mark (uuid=${remoteDto.uuid}): student '${remoteDto.studentCode}' not found locally")
                     continue
                 }
 
-                // 2. Resolve Local Assessment by cache, UUID, or (Grade + Month + Academic Year)
+                // 2. Resolve Local Assessment strictly by cache, UUID, or exact natural key (never collapse different exams by grade+month!)
                 val remoteAssessment = remoteAssessmentById[remoteDto.assessmentId]
                 val localAssessment = (remoteToLocalAssessmentIdCache[remoteDto.assessmentId]?.let { assessmentById[it] })
                     ?: (if (remoteAssessment?.uuid?.isNotBlank() == true) assessmentByUuid[remoteAssessment.uuid] else null)
@@ -2392,10 +2409,12 @@ class SyncRepository(
                         val rMonth = (remoteAssessment.month ?: remoteAssessment.assessmentPeriod).trim().uppercase()
                         val rGrade = remoteAssessment.grade.trim().uppercase()
                         val rYear = remoteAssessment.academicYear.trim().uppercase()
-                        assessmentByGradeMonthYear["${rGrade}_${rMonth}_${rYear}"]
-                            ?: assessmentByGradeMonth["${rGrade}_${rMonth}"]
+                        val rTitle = remoteAssessment.title.trim().uppercase()
+                        val rSubject = remoteAssessment.subject.trim().uppercase()
+                        val rType = remoteAssessment.assessmentType.trim().uppercase()
+                        assessmentByNaturalKey["${rGrade}_${rMonth}_${rYear}_${rTitle}_${rSubject}_${rType}"]
                     } else null)
-                    ?: assessmentById[remoteDto.assessmentId]
+                    ?: (if (!assessmentsFetchOk && remoteAssessment == null) assessmentById[remoteDto.assessmentId] else null)
 
                 if (localAssessment == null) {
                     Log.w(TAG, "Skipping remote student_mark (uuid=${remoteDto.uuid}): assessment not found locally")
@@ -2410,10 +2429,15 @@ class SyncRepository(
                 val resolvedMaxMarks = remoteDto.maxMarks ?: localAssessment.maxMarks.takeIf { it > 0 } ?: 100
 
                 // 4. Find existing local mark
+                val markKey = "${localAssessment.id}_${localStudent.id}_${resolvedSubject.trim().uppercase()}"
                 val existingLocal = (if (remoteDto.uuid.isNotBlank()) localMarkByUuid[remoteDto.uuid] else null)
-                    ?: localMarkByKey["${localAssessment.id}_${localStudent.id}_${resolvedSubject.trim().uppercase()}"]
+                    ?: localMarkByKey[markKey]
 
                 if (existingLocal != null) {
+                    // Never overwrite unsynced/dirty local edits from pull!
+                    if (existingLocal.isDirty) {
+                        continue
+                    }
                     val remoteEntity = remoteDto.toEntity(
                         existingLocalId = existingLocal.id,
                         resolvedAssessmentId = localAssessment.id,
@@ -2433,9 +2457,8 @@ class SyncRepository(
                         continue
                     }
 
-                    if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
-                        pulledEntities.add(remoteEntity)
-                        pulled++
+                    if (remoteEntity.updatedAt > existingLocal.updatedAt || existingLocal.uuid != remoteEntity.uuid) {
+                        dedupPulledMap[markKey] = remoteEntity
                     }
                 } else {
                     if (!remoteDto.isDeleted) {
@@ -2452,14 +2475,15 @@ class SyncRepository(
                             distinctionMark = remoteDto.distinctionMark ?: 75,
                             questionMarksJson = remoteDto.questionMarksJson
                         )
-                        pulledEntities.add(newEntity)
-                        pulled++
+                        dedupPulledMap[markKey] = newEntity
                     }
                 }
             }
 
+            val pulledEntities = dedupPulledMap.values.toList()
             if (pulledEntities.isNotEmpty()) {
                 dao.insertOrUpdateMarks(pulledEntities)
+                pulled += pulledEntities.size
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -2975,16 +2999,11 @@ class SyncRepository(
         var pushed = 0; var pulled = 0
 
         // Pre-fetch remote students list once to eliminate sequential network calls
-        val remoteStudentsList = try {
-            client.from("students").select().decodeList<StudentSupabaseDto>()
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            emptyList()
-        }
+        val remoteStudentsList = fetchAllRemotePaged<StudentSupabaseDto>(client, "students", 1000L)
+        val studentsFetchOk = remoteStudentsList.isNotEmpty()
         val remoteStudentById = remoteStudentsList.associateBy { it.id }
         val remoteStudentByUuid = remoteStudentsList.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
-        val remoteStudentByCode = remoteStudentsList.filter { it.studentId.isNotBlank() }.associateBy { it.studentId }
+        val remoteStudentByCode = remoteStudentsList.filter { it.studentId.isNotBlank() }.associateBy { it.studentId.trim().uppercase() }
 
         remoteStudentsList.forEach { remoteStudent ->
             if (remoteStudent.id != null) {
@@ -3013,6 +3032,24 @@ class SyncRepository(
 
             for (item in unsynced) {
                 val assignedUuid = item.uuid.ifBlank { UUID.randomUUID().toString() }
+
+                // Handle soft-deleted local records cleanly: delete on Supabase then purge locally
+                if (item.isDeleted) {
+                    try {
+                        if (item.uuid.isNotBlank()) {
+                            client.from("attendance_records").delete { filter { eq("uuid", assignedUuid) } }
+                        }
+                        dao.deleteAttendanceRecordById(item.id)
+                        pushed++
+                    } catch (ce: kotlinx.coroutines.CancellationException) {
+                        throw ce
+                    } catch (ex: Exception) {
+                        Log.w(TAG, "Deferred soft-delete propagation for attendance_record (id=${item.id}): ${ex.message}")
+                        failedIdsThisRun.add(item.id)
+                    }
+                    continue
+                }
+
                 val localStudent = studentDao.getStudentById(item.studentId)
                 if (localStudent == null) {
                     Log.w(TAG, "Skipping attendance_record push: local studentId ${item.studentId} not found")
@@ -3022,8 +3059,14 @@ class SyncRepository(
 
                 val targetStudentId = localToRemoteStudentIdCache[localStudent.id]
                     ?: (if (localStudent.uuid.isNotBlank()) remoteStudentByUuid[localStudent.uuid]?.id else null)
-                    ?: (if (localStudent.studentCode.isNotBlank()) remoteStudentByCode[localStudent.studentCode]?.id else null)
-                    ?: ensureRemoteStudentId(client, localStudent)
+                    ?: (if (localStudent.studentCode.isNotBlank()) remoteStudentByCode[localStudent.studentCode.trim().uppercase()]?.id else null)
+                    ?: ensureRemoteStudentIdOrNull(client, localStudent)
+
+                if (targetStudentId == null) {
+                    Log.w(TAG, "Deferring attendance_record push (id=${item.id}): could not resolve remote student ID for ${localStudent.studentCode}")
+                    failedIdsThisRun.add(item.id)
+                    continue
+                }
 
                 val updated = if (item.uuid.isBlank()) item.copy(uuid = assignedUuid) else item
                 val pushDto = AttendanceRecordPushDto.fromEntity(
@@ -3092,30 +3135,77 @@ class SyncRepository(
                 } else 0L
                 val cutoffIso = millisToIso(cutoffMillis)
                 try {
-                    client.from("attendance_records").select {
-                        filter { gt("updated_at", cutoffIso) }
-                    }.decodeList<AttendanceRecordSupabaseDto>()
+                    fetchRemoteUpdatedSincePaged<AttendanceRecordSupabaseDto>(client, "attendance_records", cutoffIso, 1000L)
                 } catch (filterEx: Exception) {
-                    Log.w(TAG, "Delta pull attendance failed: ${filterEx.message}, fallback to recent 500")
-                    client.from("attendance_records").select {
-                        range(0, 499)
-                    }.decodeList<AttendanceRecordSupabaseDto>()
+                    Log.w(TAG, "Delta pull attendance failed: ${filterEx.message}, skipping pull to protect local data")
+                    emptyList()
                 }
             }
-            val remotes = allRemoteAttendance
-            for (remoteDto in remotes) {
-                val existingLocal = if (remoteDto.uuid.isNotBlank()) dao.getAttendanceRecordByUuid(remoteDto.uuid) else null
-                val localStudent = remoteToLocalStudentIdCache[remoteDto.studentId]?.let { studentDao.getStudentById(it) }
-                val resolvedStudentId = localStudent?.id ?: remoteDto.studentId
-                val studentCode = localStudent?.studentCode ?: existingLocal?.studentCode ?: ""
-                val studentName = localStudent?.name ?: existingLocal?.studentName ?: ""
+
+            if (allRemoteAttendance.isEmpty()) {
+                return Pair(pushed, 0)
+            }
+
+            val allLocalStudents = studentDao.getAllStudentsList()
+            val studentByCode = allLocalStudents.filter { it.studentCode.isNotBlank() }
+                .associateBy { it.studentCode.trim().uppercase() }
+            val studentByUuid = allLocalStudents.filter { it.uuid.isNotBlank() }
+                .associateBy { it.uuid }
+            val studentById = allLocalStudents.associateBy { it.id }
+
+            val localByUuid = allLocalAttendance.filter { it.uuid.isNotBlank() }.associateBy { it.uuid }
+            val localByNaturalKey = allLocalAttendance.associateBy {
+                "${it.academicYear.trim().uppercase()}_${it.date.trim()}_${it.session.name}_${it.grade.trim().uppercase()}_${it.className.trim().uppercase()}_${it.studentId}"
+            }
+
+            val sortedRemotes = allRemoteAttendance.sortedBy { parseIsoToMillis(it.updatedAt) }
+            val dedupPulledMap = LinkedHashMap<String, AttendanceRecordEntity>()
+
+            for (remoteDto in sortedRemotes) {
+                val remoteStu = remoteStudentById[remoteDto.studentId]
+                val localStudent = (remoteToLocalStudentIdCache[remoteDto.studentId]?.let { studentById[it] })
+                    ?: (remoteStu?.let { rStu ->
+                        (if (rStu.uuid.isNotBlank()) studentByUuid[rStu.uuid] else null)
+                            ?: (if (rStu.studentId.isNotBlank()) studentByCode[rStu.studentId.trim().uppercase()] else null)
+                    })
+                    ?: (if (!studentsFetchOk) studentById[remoteDto.studentId] else null)
+
+                if (localStudent == null) {
+                    Log.w(TAG, "Skipping remote attendance_record (uuid=${remoteDto.uuid}): local student for remote student_id=${remoteDto.studentId} not found")
+                    continue
+                }
+
+                val resolvedStudentId = localStudent.id
+                val studentCode = localStudent.studentCode
+                val studentName = localStudent.name
                 val resolvedClass = if (remoteDto.className.isBlank() || remoteDto.className == "All") {
-                    localStudent?.className?.ifBlank { "A" } ?: existingLocal?.className ?: remoteDto.className
+                    localStudent.className.ifBlank { "A" }
                 } else {
                     remoteDto.className
                 }
 
+                val normalizedSession = try {
+                    AttendanceSession.valueOf(remoteDto.session.trim().uppercase()).name
+                } catch (_: Exception) {
+                    AttendanceSession.MORNING.name
+                }
+                val attKey = "${remoteDto.academicYear.trim().uppercase()}_${remoteDto.date.trim()}_${normalizedSession}_${remoteDto.grade.trim().uppercase()}_${resolvedClass.trim().uppercase()}_$resolvedStudentId"
+                val existingLocal = (if (remoteDto.uuid.isNotBlank()) localByUuid[remoteDto.uuid] else null)
+                    ?: localByNaturalKey[attKey]
+
+                if (remoteDto.isDeleted) {
+                    if (existingLocal != null && !existingLocal.isDirty) {
+                        dao.deleteAttendanceRecordById(existingLocal.id)
+                        pulled++
+                    }
+                    continue
+                }
+
                 if (existingLocal != null) {
+                    // Never overwrite unsynced/dirty local edits from pull!
+                    if (existingLocal.isDirty) {
+                        continue
+                    }
                     val remoteEntity = remoteDto.toEntity(
                         existingLocalId = existingLocal.id,
                         resolvedStudentId = resolvedStudentId,
@@ -3123,21 +3213,28 @@ class SyncRepository(
                         studentName = studentName,
                         resolvedClassName = resolvedClass
                     )
-                    if (!existingLocal.isDirty || remoteEntity.updatedAt > existingLocal.updatedAt) {
-                        dao.insertOrUpdateRecord(remoteEntity)
-                        pulled++
+                    if (remoteEntity.updatedAt > existingLocal.updatedAt || existingLocal.uuid != remoteEntity.uuid) {
+                        dedupPulledMap[attKey] = remoteEntity
                     }
                 } else {
                     val newEntity = remoteDto.toEntity(
+                        existingLocalId = 0L,
                         resolvedStudentId = resolvedStudentId,
                         studentCode = studentCode,
                         studentName = studentName,
                         resolvedClassName = resolvedClass
                     )
-                    dao.insertOrUpdateRecord(newEntity)
-                    pulled++
+                    dedupPulledMap[attKey] = newEntity
                 }
             }
+
+            val toInsertOrUpdate = dedupPulledMap.values.toList()
+            if (toInsertOrUpdate.isNotEmpty()) {
+                dao.insertOrUpdateAttendance(toInsertOrUpdate)
+                pulled += toInsertOrUpdate.size
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to pull remote attendance_records: ${e.message}")
         }
@@ -3207,13 +3304,14 @@ class SyncRepository(
     }
 
     private suspend fun ensureRemoteStudentId(client: SupabaseClient, localStudent: StudentEntity): Long {
+        return ensureRemoteStudentIdOrNull(client, localStudent) ?: localStudent.id
+    }
+
+    private suspend fun ensureRemoteStudentIdOrNull(client: SupabaseClient, localStudent: StudentEntity): Long? {
         localToRemoteStudentIdCache[localStudent.id]?.let { return it }
 
         val validUuid = localStudent.uuid.ifBlank { UUID.randomUUID().toString() }
         val updatedStudent = if (localStudent.uuid.isBlank()) localStudent.copy(uuid = validUuid) else localStudent
-        if (localStudent.uuid.isBlank()) {
-            studentDao.markStudentSynced(updatedStudent.id, validUuid)
-        }
 
         // 1. Try finding by UUID
         val byUuid = try {
@@ -3276,6 +3374,9 @@ class SyncRepository(
         }
 
         if (fetched?.id != null) {
+            if (localStudent.uuid.isBlank()) {
+                studentDao.markStudentSynced(updatedStudent.id, validUuid)
+            }
             localToRemoteStudentIdCache[localStudent.id] = fetched.id
             remoteToLocalStudentIdCache[fetched.id] = localStudent.id
             return fetched.id
@@ -3300,17 +3401,18 @@ class SyncRepository(
         }
 
         Log.e(TAG, "Could not resolve remote student ID for local student ${localStudent.id}, code ${localStudent.studentCode}")
-        return localStudent.id
+        return null
     }
 
     private suspend fun ensureRemoteAssessmentId(client: SupabaseClient, localAssessment: AssessmentEntity): Long {
+        return ensureRemoteAssessmentIdOrNull(client, localAssessment) ?: localAssessment.id
+    }
+
+    private suspend fun ensureRemoteAssessmentIdOrNull(client: SupabaseClient, localAssessment: AssessmentEntity): Long? {
         localToRemoteAssessmentIdCache[localAssessment.id]?.let { return it }
 
         val validUuid = localAssessment.uuid.ifBlank { UUID.randomUUID().toString() }
         val updatedAssessment = if (localAssessment.uuid.isBlank()) localAssessment.copy(uuid = validUuid) else localAssessment
-        if (localAssessment.uuid.isBlank()) {
-            assessmentDao?.markAssessmentSynced(updatedAssessment.id, validUuid)
-        }
 
         // 1. Try finding by UUID
         val byUuid = try {
@@ -3329,18 +3431,20 @@ class SyncRepository(
             return byUuid.id
         }
 
-        // 2. Try finding by robust match (Grade + Month or Title)
+        // 2. Try finding by strict natural match (Grade + Title + AcademicYear + Subject + AssessmentType)
         val byMatch = try {
             val allRemoteAssessments = client.from("assessments").select {
                 filter { eq("grade", localAssessment.grade) }
             }.decodeList<AssessmentSupabaseDto>()
-            val effectiveMonth = localAssessment.month.trim()
             allRemoteAssessments.firstOrNull { remote ->
-                val remoteMonth = (remote.month ?: remote.assessmentPeriod).trim()
-                val monthMatches = effectiveMonth.isNotBlank() && (remoteMonth.contains(effectiveMonth, ignoreCase = true) || effectiveMonth.contains(remoteMonth, ignoreCase = true))
-                val titleMatches = remote.title.trim().contains(localAssessment.assessmentName.trim(), ignoreCase = true) ||
-                                   localAssessment.assessmentName.trim().contains(remote.title.trim(), ignoreCase = true)
-                monthMatches || titleMatches
+                val titleMatches = remote.title.trim().equals(localAssessment.assessmentName.trim(), ignoreCase = true)
+                val yearMatches = localAssessment.academicYear.isBlank() || remote.academicYear.isBlank() ||
+                    remote.academicYear.trim().equals(localAssessment.academicYear.trim(), ignoreCase = true)
+                val subjectMatches = localAssessment.subjectName.isBlank() || remote.subject.isBlank() ||
+                    remote.subject.trim().equals(localAssessment.subjectName.trim(), ignoreCase = true)
+                val typeMatches = localAssessment.assessmentType.isBlank() || remote.assessmentType.isBlank() ||
+                    remote.assessmentType.trim().equals(localAssessment.assessmentType.trim(), ignoreCase = true)
+                titleMatches && yearMatches && subjectMatches && typeMatches
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -3349,7 +3453,9 @@ class SyncRepository(
         }
 
         if (byMatch?.id != null) {
-            assessmentDao?.markAssessmentSynced(localAssessment.id, byMatch.uuid)
+            if (!localAssessment.isDirty) {
+                assessmentDao?.markAssessmentSynced(localAssessment.id, byMatch.uuid)
+            }
             localToRemoteAssessmentIdCache[localAssessment.id] = byMatch.id
             remoteToLocalAssessmentIdCache[byMatch.id] = localAssessment.id
             return byMatch.id
@@ -3376,13 +3482,16 @@ class SyncRepository(
         }
 
         if (fetched?.id != null) {
+            if (localAssessment.uuid.isBlank()) {
+                assessmentDao?.markAssessmentSynced(updatedAssessment.id, validUuid)
+            }
             localToRemoteAssessmentIdCache[localAssessment.id] = fetched.id
             remoteToLocalAssessmentIdCache[fetched.id] = localAssessment.id
             return fetched.id
         }
 
         Log.e(TAG, "Could not resolve remote assessment ID for local assessment ${localAssessment.id}, name ${localAssessment.assessmentName}")
-        return localAssessment.id
+        return null
     }
 
     private suspend fun resolveLocalAssessmentId(

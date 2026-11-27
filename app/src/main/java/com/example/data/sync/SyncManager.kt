@@ -60,7 +60,7 @@ enum class SupabaseConnectionMode {
 object SyncManager {
     private const val TAG = "SyncManager"
     private val globalSyncMutex = Mutex()
-    private val tableMutexMap = ConcurrentHashMap<String, Mutex>()
+    private val lastLocalPushTimes = ConcurrentHashMap<String, Long>()
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // Active screen realtime channels
@@ -116,11 +116,6 @@ object SyncManager {
                 performDeltaSync(app, forceImmediate = false)
             }
         }
-    }
-
-    private fun getTableMutex(tableName: String): Mutex {
-        val key = tableName.trim().lowercase()
-        return tableMutexMap.computeIfAbsent(key) { Mutex() }
     }
 
     private fun registerNetworkCallback(context: Context) {
@@ -227,9 +222,15 @@ object SyncManager {
 
                 val flowJob = launch {
                     changeFlow.collect { action ->
-                        Log.i(TAG, "⚡ Active Screen Realtime Event ($tableName) -> Triggering targeted single-table delta sync")
-                        onRecordChanged?.invoke(tableName)
-                        triggerTableSyncAsync(tableName = tableName, context = appContext, forceImmediate = true)
+                        val clean = tableName.trim().lowercase()
+                        val lastPush = lastLocalPushTimes[clean] ?: 0L
+                        if (System.currentTimeMillis() - lastPush < 5000L) {
+                            Log.d(TAG, "⚡ Skipping Realtime echo for '$tableName' right after local push")
+                        } else {
+                            Log.i(TAG, "⚡ Active Screen Realtime Event ($tableName) -> Triggering debounced delta sync")
+                            onRecordChanged?.invoke(tableName)
+                            triggerTableSyncAsync(tableName = tableName, context = appContext, forceImmediate = false)
+                        }
                     }
                 }
 
@@ -423,7 +424,12 @@ object SyncManager {
 
                 when (result) {
                     is SyncResult.Success -> {
-                        _lastSyncTime.value = System.currentTimeMillis()
+                        val doneTime = System.currentTimeMillis()
+                        _lastSyncTime.value = doneTime
+                        if (result.totalPushed > 0) {
+                            lastLocalPushTimes["student_marks"] = doneTime
+                            lastLocalPushTimes["attendance_records"] = doneTime
+                        }
                         _syncState.value = SyncStatus.Synced(_lastSyncTime.value)
                         _connectionMode.value = SupabaseConnectionMode.ONLINE
                         Log.i(TAG, "⚡ Delta Sync completed: Pushed=${result.totalPushed}, Pulled=${result.totalPulled}")
@@ -481,9 +487,8 @@ object SyncManager {
         }
 
         val cleanTable = tableName.trim().lowercase()
-        val tableMutex = getTableMutex(cleanTable)
 
-        return tableMutex.withLock {
+        return globalSyncMutex.withLock {
             val now = System.currentTimeMillis()
             val lastTime = tableLastSyncTimes[cleanTable] ?: 0L
 
@@ -497,11 +502,17 @@ object SyncManager {
                 val repository = SyncRepository(db)
 
                 val (pushed, pulled) = repository.syncSingleTable(cleanTable)
-                tableLastSyncTimes[cleanTable] = System.currentTimeMillis()
-                _lastSyncTime.value = System.currentTimeMillis()
+                val doneTime = System.currentTimeMillis()
+                tableLastSyncTimes[cleanTable] = doneTime
+                if (pushed > 0) {
+                    lastLocalPushTimes[cleanTable] = doneTime
+                }
+                _lastSyncTime.value = doneTime
                 _syncState.value = SyncStatus.Synced(_lastSyncTime.value)
                 _connectionMode.value = SupabaseConnectionMode.ONLINE
                 Pair(pushed, pulled)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Error in targeted delta sync for '$cleanTable': ${e.message}", e)
                 Pair(0, 0)
@@ -592,7 +603,12 @@ object SyncManager {
                 val result = repository.uploadAllLocalDataAsMaster(onProgress)
                 when (result) {
                     is SyncResult.Success -> {
-                        _lastSyncTime.value = System.currentTimeMillis()
+                        val doneTime = System.currentTimeMillis()
+                        _lastSyncTime.value = doneTime
+                        if (result.totalPushed > 0) {
+                            lastLocalPushTimes["student_marks"] = doneTime
+                            lastLocalPushTimes["attendance_records"] = doneTime
+                        }
                         _syncState.value = SyncStatus.Synced(_lastSyncTime.value)
                         _connectionMode.value = SupabaseConnectionMode.ONLINE
                     }
